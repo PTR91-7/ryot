@@ -75,7 +75,7 @@ export const BaseEntityDisplayItem = (props: {
 							style={{ overflow: "hidden" }}
 							className={clsx(props.imageClassName, {
 								[classes.highlightImage]:
-									coreDetails.isServerKeyValidated && props.highlightImage,
+									props.highlightImage,
 							})}
 						>
 							<Image
