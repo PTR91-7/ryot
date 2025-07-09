@@ -211,7 +211,7 @@ export default function Page() {
 							)}
 						</ClientOnly>
 					</SimpleGrid>
-					{!coreDetails.isServerKeyValidated &&
+					{
 					![
 						ApplicationTimeRange.Yesterday,
 						ApplicationTimeRange.Past7Days,
