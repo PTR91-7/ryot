@@ -40,7 +40,7 @@ jobs:
             ];
 
             let shouldRun = 'false';
-            if (context.eventName === "push") {
+            if (context.eventName === "workflow_dispatch") {
               shouldRun = 'true';
             } else if (context.eventName === "pull_request") {
               const commitMsg = await github.rest.repos.getCommit({
