@@ -14,7 +14,7 @@ permissions:
 
 env:
   GHCR_REGISTRY: ghcr.io
-  DOCKER_USERNAME: ignisda
+  DOCKER_USERNAME: PTR91-7
 
 jobs:
   pre-workflow-checks:
