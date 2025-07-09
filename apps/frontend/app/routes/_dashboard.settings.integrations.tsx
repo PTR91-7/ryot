@@ -470,7 +470,7 @@ const CreateOrUpdateModal = (props: {
 
 	const isUpdating = Boolean(props.integrationData?.id);
 	const disableCreationButtonBecauseProRequired =
-		!coreDetails.isServerKeyValidated &&
+		coreDetails.isServerKeyValidated &&
 		provider &&
 		PRO_INTEGRATIONS.includes(provider);
 
