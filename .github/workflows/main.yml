@@ -5,7 +5,7 @@ permissions:
 
 env:
   GHCR_REGISTRY: ghcr.io
-  DOCKER_USERNAME: PTR91-7
+  DOCKER_USERNAME: xghxgh7
 
 jobs:
   pre-workflow-checks:
