@@ -55,7 +55,7 @@ jobs:
 
             core.setOutput('should-run', shouldRun);
 
-            const shouldRelease = (context.eventName === "push" && context.ref.startsWith("refs/tags/")) ? 'true' : 'false';
+            const shouldRelease = (context.eventName === "workflow_dispatch" && context.ref.startsWith("refs/tags/")) ? 'true' : 'false';
             core.setOutput('should-release', shouldRelease);
 
             core.setOutput('image-names', imageNames.join('\n'));
