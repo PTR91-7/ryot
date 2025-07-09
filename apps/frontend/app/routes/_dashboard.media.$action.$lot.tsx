@@ -383,7 +383,7 @@ export default function Page() {
 							/>
 							{(loaderData.mediaList?.url.startDateRange ||
 								loaderData.mediaList?.url.endDateRange) &&
-							!coreDetails.isServerKeyValidated ? (
+							coreDetails.isServerKeyValidated ? (
 								<ProRequiredAlert alertText="Ryot Pro is required to filter by dates" />
 							) : loaderData.mediaList.list.response.details.total > 0 ? (
 								<ApplicationGrid
