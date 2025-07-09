@@ -253,7 +253,7 @@ export default function Page() {
 						loading={isCaptureLoading}
 						leftSection={<IconImageInPicture />}
 						onClick={() => {
-							if (!coreDetails.isServerKeyValidated)
+							if (coreDetails.isServerKeyValidated)
 								return notifications.show({
 									color: "red",
 									title: "Pro required",
