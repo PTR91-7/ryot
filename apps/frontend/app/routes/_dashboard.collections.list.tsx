@@ -278,7 +278,7 @@ const DisplayCollection = (props: {
 					pos="relative"
 					style={{ overflow: "hidden" }}
 				>
-					{(
+					{coreDetails.isServerKeyValidated ? (
 						collectionImages && collectionImages.length > 0 ? (
 							collectionImages.map((image, index) => {
 								const shouldCollapse = index < currentlyHovered;
