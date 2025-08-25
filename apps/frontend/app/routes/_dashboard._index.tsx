@@ -300,7 +300,7 @@ const RecommendationsSection = () => {
 				</ActionIcon>
 			</Group>
 			{data ? (
-				coreDetails.isServerKeyValidated ? (
+				!coreDetails.isServerKeyValidated ? (
 					data.userMetadataRecommendations.response.length > 0 ? (
 						<ApplicationGrid>
 							{data.userMetadataRecommendations.response.map((lm) => (
