@@ -811,7 +811,7 @@ const CreateOrUpdateModal = (props: {
 
 	const isUpdating = Boolean(props.integrationData?.id);
 	const disableCreationButtonBecauseProRequired =
-		!coreDetails.isServerKeyValidated && provider && isProProvider(provider);
+		coreDetails.isServerKeyValidated && provider && isProProvider(provider);
 
 	return (
 		<Modal
@@ -922,12 +922,12 @@ const CreateOrUpdateModal = (props: {
 							{provider && supportsSyncToOwnedCollection(provider) ? (
 								<Tooltip
 									label="Only available for Pro users"
-									disabled={coreDetails.isServerKeyValidated}
+									disabled={!coreDetails.isServerKeyValidated}
 								>
 									<Checkbox
 										name="syncToOwnedCollection"
 										label="Sync to Owned collection"
-										disabled={!coreDetails.isServerKeyValidated}
+										disabled={coreDetails.isServerKeyValidated}
 										styles={{ body: { display: "flex", alignItems: "center" } }}
 										description={`Checking this will also sync items in your library to the "Owned" collection`}
 										defaultChecked={
