@@ -211,7 +211,7 @@ export default function Page() {
 							)}
 						</ClientOnly>
 					</SimpleGrid>
-					{!coreDetails.isServerKeyValidated &&
+					{
 					![
 						ApplicationTimeRange.Yesterday,
 						ApplicationTimeRange.Past7Days,
@@ -253,7 +253,7 @@ export default function Page() {
 						loading={isCaptureLoading}
 						leftSection={<IconImageInPicture />}
 						onClick={() => {
-							if (!coreDetails.isServerKeyValidated)
+							if (coreDetails.isServerKeyValidated)
 								return notifications.show({
 									color: "red",
 									title: "Pro required",
