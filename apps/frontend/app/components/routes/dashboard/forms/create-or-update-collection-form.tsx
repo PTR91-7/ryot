@@ -154,7 +154,7 @@ export const CreateOrUpdateCollectionModal = (props: {
 					<Checkbox
 						label="Hide collection"
 						checked={formData.isHidden}
-						disabled={!coreDetails.isServerKeyValidated}
+						disabled={coreDetails.isServerKeyValidated}
 						onChange={(e) =>
 							setFormData(
 								produce(formData, (draft) => {
@@ -171,7 +171,7 @@ export const CreateOrUpdateCollectionModal = (props: {
 					<MultiSelect
 						searchable
 						value={formData.collaborators}
-						disabled={!coreDetails.isServerKeyValidated}
+						disabled={coreDetails.isServerKeyValidated}
 						description="Add collaborators to this collection"
 						data={usersList?.map((u) => ({
 							value: u.id,
@@ -196,7 +196,7 @@ export const CreateOrUpdateCollectionModal = (props: {
 							<Anchor
 								size="xs"
 								onClick={() => {
-									if (!coreDetails.isServerKeyValidated) {
+									if (coreDetails.isServerKeyValidated) {
 										notifications.show({
 											color: "red",
 											message: PRO_REQUIRED_MESSAGE,
