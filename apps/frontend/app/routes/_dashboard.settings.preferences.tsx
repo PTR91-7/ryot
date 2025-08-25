@@ -362,7 +362,7 @@ export default function Page() {
 										defaultValue={userPreferences.general.landingPath}
 										description="The page you want to see when you first open the app"
 										onChange={(value) => {
-											if (!coreDetails.isServerKeyValidated) {
+											if (coreDetails.isServerKeyValidated) {
 												notifications.show({
 													color: "red",
 													message: PRO_REQUIRED_MESSAGE,
