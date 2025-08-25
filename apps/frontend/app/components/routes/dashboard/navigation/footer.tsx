@@ -7,7 +7,7 @@ export const Footer = () => {
 
 	return (
 		<Flex gap={80} justify="center">
-			{!coreDetails.isServerKeyValidated ? (
+			{coreDetails.isServerKeyValidated ? (
 				<Anchor
 					target="_blank"
 					rel="noopener noreferrer"
