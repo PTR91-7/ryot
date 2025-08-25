@@ -329,7 +329,7 @@ export default function Page(props: {
 									}
 								/>
 								{(listFilters.startDateRange || listFilters.endDateRange) &&
-								!coreDetails.isServerKeyValidated ? (
+								coreDetails.isServerKeyValidated ? (
 									<ProRequiredAlert alertText="Ryot Pro is required to filter by dates" />
 								) : userMetadataList.response.details.totalItems > 0 ? (
 									<ApplicationGrid
