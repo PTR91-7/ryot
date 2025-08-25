@@ -1,20 +1,14 @@
 name: Main
 
 on:
-  push:
-    branches: ["main"]
-    tags:
-      - "*-?v[0-9]+*"
-  pull_request:
-    branches: ["main"]
-    types: [opened, synchronize]
+  workflow_dispatch
 
 permissions:
   contents: read
 
 env:
   GHCR_REGISTRY: ghcr.io
-  DOCKER_USERNAME: ignisda
+  DOCKER_USERNAME: xghxgh7
 
 jobs:
   pre-workflow-checks:
@@ -46,7 +40,7 @@ jobs:
             ];
 
             let shouldRun = 'false';
-            if (context.eventName === "push") {
+            if (context.eventName === "workflow_dispatch") {
               shouldRun = 'true';
             } else if (context.eventName === "pull_request") {
               const commitMsg = await github.rest.repos.getCommit({
@@ -61,7 +55,7 @@ jobs:
 
             core.setOutput('should-run', shouldRun);
 
-            const shouldRelease = (context.eventName === "push" && context.ref.startsWith("refs/tags/")) ? 'true' : 'false';
+            const shouldRelease = (context.eventName === "workflow_dispatch" && context.ref.startsWith("refs/tags/")) ? 'true' : 'false';
             core.setOutput('should-release', shouldRelease);
 
             core.setOutput('image-names', imageNames.join('\n'));
@@ -209,85 +203,3 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
-
-  upload-kodi-plugin:
-    needs:
-      - pre-workflow-checks
-      - build-docker
-    if: needs.pre-workflow-checks.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MOON_TOOLCHAIN_FORCE_GLOBALS: true
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          persist-credentials: false
-      - name: Setup Moon
-        uses: moonrepo/setup-toolchain@937d7dbbc1ec218aa8641c792d5821addebd9f03
-        with:
-          auto-install: true
-      - name: Build plugin
-        run: moon run kodi:build
-      - name: Upload plugin to releases
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: gh release upload --clobber "${REF_NAME}" "tmp/script.ryot.zip"
-
-  upload-browser-extensions:
-    needs:
-      - pre-workflow-checks
-      - build-docker
-    if: needs.pre-workflow-checks.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MOON_TOOLCHAIN_FORCE_GLOBALS: true
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          persist-credentials: false
-      - name: Setup Moon
-        uses: moonrepo/setup-toolchain@937d7dbbc1ec218aa8641c792d5821addebd9f03
-        with:
-          auto-install: true
-      - name: Build browser extensions
-        run: |
-          moon run browser-extension:build
-      - name: Upload browser extensions to releases
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          gh release upload --clobber "${REF_NAME}" apps/browser-extension/dist/*.zip
-
-  deploy-docs:
-    needs:
-      - pre-workflow-checks
-      - build-docker
-    if: needs.pre-workflow-checks.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      MOON_TOOLCHAIN_FORCE_GLOBALS: true
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          persist-credentials: false
-      - name: Setup Moon
-        uses: moonrepo/setup-toolchain@937d7dbbc1ec218aa8641c792d5821addebd9f03
-        with:
-          auto-install: true
-      - name: Build documentation
-        run: moon run docs:build
-      - name: Push to deployment branch
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: apps/docs/.vitepress/dist
-          publish_branch: nf-docs
-          force_orphan: true
