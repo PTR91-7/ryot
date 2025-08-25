@@ -163,7 +163,7 @@ export const CollectionsFilter = (props: {
 							</ActionIcon>
 						</Group>
 					))}
-					{filters.length > 1 && !coreDetails.isServerKeyValidated ? (
+					{filters.length > 1 && coreDetails.isServerKeyValidated ? (
 						<ProRequiredAlert tooltipLabel="Only the first filter will be applied" />
 					) : null}
 				</Stack>
