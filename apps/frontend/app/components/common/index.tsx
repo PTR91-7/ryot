@@ -87,7 +87,7 @@ export const ProRequiredAlert = (props: {
 }) => {
 	const coreDetails = useCoreDetails();
 
-	return !coreDetails.isServerKeyValidated ? (
+	return coreDetails.isServerKeyValidated ? (
 		<Alert>
 			<Tooltip label={props.tooltipLabel} disabled={!props.tooltipLabel}>
 				<Text size="xs">{props.alertText || PRO_REQUIRED_MESSAGE}</Text>
