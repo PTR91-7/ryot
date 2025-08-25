@@ -57,7 +57,7 @@ export const HistoryItem = (props: {
 		index?: number,
 	) => {
 		if (!ref || !ref.current) return;
-		if (!coreDetails.isServerKeyValidated) {
+		if (coreDetails.isServerKeyValidated) {
 			notifications.show({
 				color: "red",
 				message: PRO_REQUIRED_MESSAGE,
