@@ -4,13 +4,16 @@ use database_models::{collection, metadata_group};
 use enum_models::MediaLot;
 use media_models::{
     CollectionContentsFilter, CollectionContentsSortBy, EntityWithLot, GenreListItem,
-    GraphqlSortOrder, MediaFilter, MediaSortBy, MetadataLookupResponse,
+    GraphqlMetadataDetails, GraphqlSortOrder, MediaFilter, MediaSortBy, MetadataLookupResponse,
     PersonAndMetadataGroupsSortBy, ReviewItem,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{BasicUserDetails, UserAnalytics};
+use crate::{
+    BasicUserDetails, GraphqlPersonDetails, UserAnalytics, UserMetadataDetails,
+    UserMetadataGroupDetails, UserPersonDetails, UserWorkoutDetails, UserWorkoutTemplateDetails,
+};
 
 #[derive(PartialEq, Eq, Default, Serialize, Deserialize, Debug, SimpleObject, Clone)]
 #[graphql(concrete(
@@ -39,8 +42,11 @@ pub struct SortInput<T: InputType + Default> {
 }
 
 #[derive(PartialEq, Eq, Default, Serialize, Deserialize, Debug, SimpleObject, Clone)]
+#[graphql(concrete(name = "CachedGenreDetailsResponse", params(GenreDetails)))]
 #[graphql(concrete(name = "CachedUserAnalyticsResponse", params(UserAnalytics)))]
 #[graphql(concrete(name = "CachedSearchIdResponse", params(UserMetadataListResponse)))]
+#[graphql(concrete(name = "CachedUserPersonDetailsResponse", params(UserPersonDetails)))]
+#[graphql(concrete(name = "CachedUserWorkoutDetailsResponse", params(UserWorkoutDetails)))]
 #[graphql(concrete(name = "CachedMetadataLookupResponse", params(MetadataLookupResponse)))]
 #[graphql(concrete(
     params(UserCollectionsListResponse),
@@ -51,12 +57,36 @@ pub struct SortInput<T: InputType + Default> {
     name = "CachedCollectionContentsResponse",
 ))]
 #[graphql(concrete(
+    params(UserMetadataDetails),
+    name = "CachedUserMetadataDetailsResponse",
+))]
+#[graphql(concrete(
     params(UserMeasurementsListResponse),
     name = "CachedUserMeasurementsListResponse",
 ))]
 #[graphql(concrete(
+    params(GraphqlPersonDetails),
+    name = "CachedGraphqlPersonDetailsResponse",
+))]
+#[graphql(concrete(
+    params(MetadataGroupDetails),
+    name = "CachedMetadataGroupDetailsResponse",
+))]
+#[graphql(concrete(
+    params(GraphqlMetadataDetails),
+    name = "CachedGraphqlMetadataDetailsResponse",
+))]
+#[graphql(concrete(
     params(ApplicationDateRange),
     name = "CachedUserAnalyticsParametersResponse",
+))]
+#[graphql(concrete(
+    params(UserMetadataGroupDetails),
+    name = "CachedUserMetadataGroupDetailsResponse",
+))]
+#[graphql(concrete(
+    params(UserWorkoutTemplateDetails),
+    name = "CachedUserWorkoutTemplateDetailsResponse",
 ))]
 #[graphql(concrete(
     params(UserMetadataRecommendationsResponse),
@@ -76,13 +106,13 @@ pub struct CollectionContents {
     pub results: SearchResults<EntityWithLot>,
 }
 
-#[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct MetadataGroupDetails {
     pub contents: Vec<String>,
     pub details: metadata_group::Model,
 }
 
-#[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct GenreDetails {
     pub details: GenreListItem,
     pub contents: SearchResults<String>,
@@ -119,6 +149,7 @@ pub struct UserPeopleListInput {
 
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, InputObject, Clone, Default)]
 pub struct UserMetadataGroupsListInput {
+    pub lot: Option<MediaLot>,
     pub search: Option<SearchInput>,
     pub filter: Option<MediaFilter>,
     pub sort: Option<SortInput<PersonAndMetadataGroupsSortBy>>,
@@ -135,7 +166,7 @@ pub enum UserTemplatesOrWorkoutsListSortBy {
 
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, InputObject, Clone, Default)]
 pub struct UserTemplatesOrWorkoutsListInput {
-    pub search: SearchInput,
+    pub search: Option<SearchInput>,
     pub sort: Option<SortInput<UserTemplatesOrWorkoutsListSortBy>>,
 }
 

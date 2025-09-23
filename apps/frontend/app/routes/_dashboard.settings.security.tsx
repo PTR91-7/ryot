@@ -29,7 +29,7 @@ import { getActionIntent, processSubmission } from "@ryot/ts-utils";
 import { useMutation } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
-import { Form, data, useNavigate, useRevalidator } from "react-router";
+import { Form, data, useNavigate } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -40,6 +40,7 @@ import {
 	useConfirmSubmit,
 	useCoreDetails,
 	useDashboardLayoutData,
+	useInvalidateUserDetails,
 	useUserDetails,
 } from "~/lib/shared/hooks";
 import { clientGqlService } from "~/lib/shared/react-query";
@@ -96,11 +97,12 @@ export default function Page() {
 }
 
 const PasswordSection = () => {
+	const navigate = useNavigate();
 	const submit = useConfirmSubmit();
 	const userDetails = useUserDetails();
 	const dashboardData = useDashboardLayoutData();
-	const navigate = useNavigate();
 	const isEditDisabled = dashboardData.isDemoInstance;
+	const invalidateUserDetails = useInvalidateUserDetails();
 
 	const generatePasswordChangeSessionMutation = useMutation({
 		mutationFn: async () => {
@@ -157,7 +159,10 @@ const PasswordSection = () => {
 							e.preventDefault();
 							openConfirmationModal(
 								"Are you sure you want to update your profile?",
-								() => submit(form),
+								async () => {
+									submit(form);
+									await invalidateUserDetails();
+								},
 							);
 						}}
 					>
@@ -197,7 +202,6 @@ const TwoFactorAuthSection = () => {
 	const userDetails = useUserDetails();
 	const coreDetails = useCoreDetails();
 	const navigate = useNavigate();
-	const revalidator = useRevalidator();
 	const dashboardData = useDashboardLayoutData();
 	const isEditDisabled = dashboardData.isDemoInstance;
 	const [setupModalOpened, { open: openSetupModal, close: closeSetupModal }] =
@@ -219,7 +223,6 @@ const TwoFactorAuthSection = () => {
 				color: "yellow",
 				message: "Two-Factor Authentication Disabled",
 			});
-			revalidator.revalidate();
 			navigate($path("/api/logout"));
 		},
 	});
@@ -238,13 +241,11 @@ const TwoFactorAuthSection = () => {
 				message: "Backup codes regenerated successfully",
 			});
 			setRegeneratedBackupCodes(data.backupCodes);
-			revalidator.revalidate();
 		},
 	});
 
 	const onCloseSetupModal = () => {
 		closeSetupModal();
-		revalidator.revalidate();
 	};
 
 	return (

@@ -1,11 +1,10 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use application_utils::get_base_http_client;
 use async_trait::async_trait;
 use chrono::Datelike;
 use common_models::{EntityAssets, NamedObject, SearchDetails};
 use common_utils::PAGE_SIZE;
 use dependent_models::{MetadataSearchSourceSpecifics, SearchResults};
-use enum_models::{MediaLot, MediaSource};
 use itertools::Itertools;
 use media_models::{
     MetadataDetails, MetadataFreeCreator, MetadataSearchItem, PodcastEpisode, PodcastSpecifics,
@@ -30,6 +29,14 @@ impl ITunesService {
             client,
             language: config.locale.clone(),
         })
+    }
+
+    pub fn get_all_languages(&self) -> Vec<String> {
+        vec!["en_us".to_string(), "ja_jp".to_string()]
+    }
+
+    pub fn get_default_language(&self) -> String {
+        "en_us".to_owned()
     }
 }
 
@@ -71,16 +78,15 @@ impl MediaProvider for ITunesService {
         let rsp = self
             .client
             .get(format!("{URL}/lookup"))
-            .query(&serde_json::json!({
-                "id": identifier,
-                "media": "podcast",
-                "entity": "podcast",
-                "lang": self.language
-            }))
+            .query(&[
+                ("id", identifier),
+                ("media", "podcast"),
+                ("entity", "podcast"),
+                ("lang", self.language.as_str()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let details: SearchResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let details: SearchResponse = rsp.json().await?;
         let ht = details.results.unwrap()[0].clone();
         let description = ht.description.clone();
         let creators = Vec::from_iter(ht.artist_name.clone())
@@ -88,7 +94,6 @@ impl MediaProvider for ITunesService {
             .map(|a| MetadataFreeCreator {
                 name: a,
                 role: "Artist".to_owned(),
-                ..Default::default()
             })
             .collect();
         let genres = ht
@@ -106,22 +111,21 @@ impl MediaProvider for ITunesService {
         let rsp = self
             .client
             .get(format!("{URL}/lookup"))
-            .query(&serde_json::json!({
-                "id": identifier,
-                "media": "podcast",
-                "entity": "podcastEpisode",
-                "limit": total_episodes,
-                "lang": self.language
-            }))
+            .query(&[
+                ("id", identifier),
+                ("media", "podcast"),
+                ("entity", "podcastEpisode"),
+                ("limit", &total_episodes.to_string()),
+                ("lang", self.language.as_str()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let remote_images = details.image.into_iter().collect();
         let assets = EntityAssets {
             remote_images,
             ..Default::default()
         };
-        let episodes: SearchResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+        let episodes: SearchResponse = rsp.json().await?;
         let episodes = episodes.results.unwrap_or_default();
         let publish_date = episodes
             .last()
@@ -148,10 +152,7 @@ impl MediaProvider for ITunesService {
             creators,
             description,
             publish_date,
-            lot: MediaLot::Podcast,
-            source: MediaSource::Itunes,
             title: details.title.clone(),
-            identifier: details.identifier,
             publish_year: publish_date.map(|d| d.year()),
             source_url: Some(format!(
                 "https://podcasts.apple.com/us/podcast/{}/id{}",
@@ -167,25 +168,23 @@ impl MediaProvider for ITunesService {
 
     async fn metadata_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         _display_nsfw: bool,
         _source_specifics: &Option<MetadataSearchSourceSpecifics>,
     ) -> Result<SearchResults<MetadataSearchItem>> {
-        let page = page.unwrap_or(1);
         let rsp = self
             .client
             .get(format!("{URL}/search"))
-            .query(&serde_json::json!({
-                "term": query,
-                "media": "podcast",
-                "entity": "podcast",
-                "lang": self.language
-            }))
+            .query(&[
+                ("term", query),
+                ("media", "podcast"),
+                ("entity", "podcast"),
+                ("lang", self.language.as_str()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let search: SearchResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let search: SearchResponse = rsp.json().await?;
         let resp = search
             .results
             .unwrap_or_default()

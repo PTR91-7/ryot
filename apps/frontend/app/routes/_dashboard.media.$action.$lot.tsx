@@ -1,7 +1,6 @@
 import {
 	ActionIcon,
 	Box,
-	Button,
 	Checkbox,
 	Container,
 	Divider,
@@ -34,23 +33,23 @@ import {
 	IconCheck,
 	IconFilter,
 	IconListCheck,
-	IconPhotoPlus,
 	IconSearch,
 	IconSortAscending,
 	IconSortDescending,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { $path } from "safe-routes";
 import { useLocalStorage } from "usehooks-ts";
 import {
 	ApplicationPagination,
-	BulkCollectionEditingAffix,
+	CreateButton,
 	DisplayListDetailsAndRefresh,
 	ProRequiredAlert,
 	SkeletonLoader,
 } from "~/components/common";
+import { BulkCollectionEditingAffix } from "~/components/common/BulkCollectionEditingAffix";
 import {
 	CollectionsFilter,
 	DebouncedSearchInput,
@@ -59,7 +58,7 @@ import {
 import { ApplicationGrid } from "~/components/common/layout";
 import { MetadataDisplayItem } from "~/components/media/display-items";
 import { dayjsLib, getStartTimeFromRange } from "~/lib/shared/date-utils";
-import { useCoreDetails } from "~/lib/shared/hooks";
+import { useCoreDetails, useUserMetadataList } from "~/lib/shared/hooks";
 import { getLot } from "~/lib/shared/media-utils";
 import { clientGqlService, queryFactory } from "~/lib/shared/react-query";
 import {
@@ -75,6 +74,8 @@ import {
 import { ApplicationTimeRange, type FilterUpdateFunction } from "~/lib/types";
 
 interface ListFilterState {
+	page: number;
+	query: string;
 	sortBy: MediaSortBy;
 	endDateRange?: string;
 	startDateRange?: string;
@@ -85,7 +86,8 @@ interface ListFilterState {
 }
 
 interface SearchFilterState {
-	query?: string;
+	page: number;
+	query: string;
 	source: MediaSource;
 	igdbThemeIds?: string[];
 	igdbGenreIds?: string[];
@@ -98,6 +100,8 @@ interface SearchFilterState {
 }
 
 const defaultListFilters: ListFilterState = {
+	page: 1,
+	query: "",
 	collections: [],
 	sortBy: MediaSortBy.LastUpdated,
 	sortOrder: GraphqlSortOrder.Desc,
@@ -134,26 +138,20 @@ export default function Page(props: {
 		defaultListFilters,
 	);
 	const defaultSearchFilters: SearchFilterState = {
+		page: 1,
+		query: "",
 		source: metadataLotSourceMapping?.sources[0] || MediaSource.Tmdb,
 	};
 	const [searchFilters, setSearchFilters] = useLocalStorage<SearchFilterState>(
 		`MediaSearchFilters_${lot}`,
 		defaultSearchFilters,
 	);
-	const [searchQuery, setSearchQuery] = useLocalStorage(
-		`MediaSearchQuery_${lot}`,
-		"",
-	);
-	const [currentPage, setCurrentPage] = useLocalStorage(
-		`MediaCurrentPage_${lot}`,
-		1,
-	);
 
 	const listInput: UserMetadataListInput = useMemo(
 		() => ({
 			lot,
+			search: { page: listFilters.page, query: listFilters.query },
 			sort: { order: listFilters.sortOrder, by: listFilters.sortBy },
-			search: { page: currentPage, query: searchQuery },
 			filter: {
 				general: listFilters.generalFilter,
 				collections: listFilters.collections,
@@ -163,14 +161,14 @@ export default function Page(props: {
 				},
 			},
 		}),
-		[lot, listFilters, searchQuery, currentPage],
+		[lot, listFilters],
 	);
 
 	const searchInput: MetadataSearchInput = useMemo(
 		() => ({
 			lot,
 			source: searchFilters.source,
-			search: { page: currentPage, query: searchQuery },
+			search: { page: searchFilters.page, query: searchFilters.query },
 			sourceSpecifics: {
 				googleBooks: { passRawQuery: searchFilters.googleBooksPassRawQuery },
 				igdb: {
@@ -186,19 +184,11 @@ export default function Page(props: {
 				},
 			},
 		}),
-		[lot, searchFilters, searchQuery, currentPage],
+		[lot, searchFilters],
 	);
 
-	const { data: userMetadataList, refetch: refetchUserMetadataList } = useQuery(
-		{
-			enabled: action === "list",
-			queryKey: queryFactory.media.userMetadataList(listInput).queryKey,
-			queryFn: () =>
-				clientGqlService
-					.request(UserMetadataListDocument, { input: listInput })
-					.then((data) => data.userMetadataList),
-		},
-	);
+	const { data: userMetadataList, refetch: refetchUserMetadataList } =
+		useUserMetadataList(listInput, action === "list");
 
 	const { data: metadataSearch } = useQuery({
 		enabled: action === "search",
@@ -270,20 +260,13 @@ export default function Page(props: {
 						>
 							<Text>Search</Text>
 						</Tabs.Tab>
-						<Box ml="auto" visibleFrom="md">
-							<Button
-								component={Link}
-								variant="transparent"
-								leftSection={<IconPhotoPlus />}
-								to={$path(
-									"/media/update/:action",
-									{ action: "create" },
-									{ lot },
-								)}
-							>
-								Create
-							</Button>
-						</Box>
+						<CreateButton
+							to={$path(
+								"/media/item/update/:action",
+								{ action: "create" },
+								{ lot },
+							)}
+						/>
 					</Tabs.List>
 				</Tabs>
 
@@ -293,13 +276,13 @@ export default function Page(props: {
 							<>
 								<Group wrap="nowrap">
 									<DebouncedSearchInput
-										initialValue={searchQuery}
+										value={listFilters.query}
 										placeholder={`Sift through your ${changeCase(
 											lot.toLowerCase(),
 										).toLowerCase()}s`}
 										onChange={(value) => {
-											setSearchQuery(value);
-											setCurrentPage(1);
+											updateListFilters("query", value);
+											updateListFilters("page", 1);
 										}}
 									/>
 									<ActionIcon
@@ -343,8 +326,8 @@ export default function Page(props: {
 									<Text>You do not have any saved yet</Text>
 								)}
 								<ApplicationPagination
-									value={currentPage}
-									onChange={setCurrentPage}
+									value={listFilters.page}
+									onChange={(v) => updateListFilters("page", v)}
 									totalItems={userMetadataList.response.details.totalItems}
 								/>
 							</>
@@ -357,13 +340,13 @@ export default function Page(props: {
 							<>
 								<Flex gap="xs" direction={{ base: "column", md: "row" }}>
 									<DebouncedSearchInput
-										initialValue={searchQuery}
+										value={searchFilters.query}
 										placeholder={`Search for ${changeCase(
 											lot.toLowerCase(),
 										).toLowerCase()}s`}
 										onChange={(value) => {
-											setSearchQuery(value);
-											setCurrentPage(1);
+											updateSearchFilters("query", value);
+											updateSearchFilters("page", 1);
 										}}
 										tourControl={{
 											target: OnboardingTourStepTargets.SearchAudiobook,
@@ -427,8 +410,8 @@ export default function Page(props: {
 									<Text>No media found matching your query</Text>
 								)}
 								<ApplicationPagination
-									value={currentPage}
-									onChange={setCurrentPage}
+									value={searchFilters.page}
+									onChange={(v) => updateSearchFilters("page", v)}
 									totalItems={metadataSearch.response.details.totalItems}
 								/>
 							</>
@@ -628,8 +611,7 @@ const SearchFiltersModalForm = (props: SearchFiltersModalFormProps) => {
 						onFiltersChange("googleBooksPassRawQuery", e.target.checked)
 					}
 				/>
-			) : null}
-			{filters.source === MediaSource.Igdb ? (
+			) : filters.source === MediaSource.Igdb ? (
 				<>
 					<IgdbMultiselect
 						label="Select themes"
@@ -681,7 +663,9 @@ const SearchFiltersModalForm = (props: SearchFiltersModalFormProps) => {
 						}
 					/>
 				</>
-			) : null}
+			) : (
+				<Text>No filters are available for {startCase(filters.source)}</Text>
+			)}
 		</Stack>
 	);
 };

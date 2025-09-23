@@ -6,17 +6,32 @@ import {
 	DeployAddEntitiesToCollectionJobDocument,
 	DeployBulkMetadataProgressUpdateDocument,
 	DeployRemoveEntitiesFromCollectionJobDocument,
-	type EntityLot,
+	DeployUpdateMediaEntityJobDocument,
+	EntityLot,
 	ExpireCacheKeyDocument,
 	type MediaLot,
+	MediaSource,
 	type MetadataProgressUpdateInput,
+	UpdateUserDocument,
+	UserCollectionsListDocument,
+	UserMetadataGroupsListDocument,
+	type UserMetadataGroupsListInput,
+	UserMetadataListDocument,
+	type UserMetadataListInput,
+	UserPeopleListDocument,
+	type UserPeopleListInput,
 	UsersListDocument,
 } from "@ryot/generated/graphql/backend/graphql";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { useRevalidator, useRouteLoaderData, useSubmit } from "react-router";
+import {
+	useFetcher,
+	useRevalidator,
+	useRouteLoaderData,
+	useSubmit,
+} from "react-router";
 import { $path } from "safe-routes";
 import invariant from "tiny-invariant";
 import { useInterval, useMediaQuery } from "usehooks-ts";
@@ -32,6 +47,10 @@ import {
 	refreshEntityDetails,
 } from "~/lib/shared/react-query";
 import { selectRandomElement } from "~/lib/shared/ui-utils";
+import {
+	getExerciseDetailsQuery,
+	getUserExerciseDetailsQuery,
+} from "~/lib/state/fitness";
 import {
 	type InProgressWorkout,
 	useCurrentWorkout,
@@ -70,7 +89,6 @@ export const useConfirmSubmit = () => {
 };
 
 export const useGetWorkoutStarter = () => {
-	const revalidator = useRevalidator();
 	const navigate = useNavigate();
 	const [_w, setCurrentWorkout] = useCurrentWorkout();
 	const [_t, setTimer] = useCurrentWorkoutTimerAtom();
@@ -81,13 +99,110 @@ export const useGetWorkoutStarter = () => {
 		setStopwatch(null);
 		setCurrentWorkout(wkt);
 		navigate($path("/fitness/:action", { action }));
-		revalidator.revalidate();
 	};
 	return fn;
 };
 
+export const usePartialStatusMonitor = (props: {
+	entityId?: string;
+	entityLot: EntityLot;
+	onUpdate: () => unknown;
+	partialStatus?: boolean | null;
+	externalLinkSource: MediaSource;
+}) => {
+	const { entityId, entityLot, onUpdate, partialStatus, externalLinkSource } =
+		props;
+
+	const [jobDeployedForEntity, setJobDeployedForEntity] = useState<
+		string | null
+	>(null);
+	const [isPartialStatusActive, setIsPartialStatusActive] = useState(false);
+	const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+		undefined,
+	);
+	const attemptCountRef = useRef(0);
+	const isPollingRef = useRef(false);
+
+	const scheduleNextPoll = useCallback(() => {
+		if (!isPollingRef.current) return;
+
+		if (attemptCountRef.current >= 30) {
+			onUpdate();
+			isPollingRef.current = false;
+			setIsPartialStatusActive(false);
+			return;
+		}
+
+		timeoutRef.current = setTimeout(async () => {
+			if (!isPollingRef.current) return;
+			await onUpdate();
+			attemptCountRef.current += 1;
+
+			scheduleNextPoll();
+		}, 1000);
+	}, [onUpdate]);
+
+	const resetPollingState = useCallback(() => {
+		if (timeoutRef.current) {
+			clearTimeout(timeoutRef.current);
+			timeoutRef.current = undefined;
+		}
+		attemptCountRef.current = 0;
+		isPollingRef.current = false;
+		setIsPartialStatusActive(false);
+	}, []);
+
+	useEffect(() => {
+		resetPollingState();
+
+		const isJobForDifferentEntity =
+			jobDeployedForEntity && jobDeployedForEntity !== entityId;
+		const shouldPoll =
+			entityId && partialStatus && externalLinkSource !== MediaSource.Custom;
+
+		if (isJobForDifferentEntity || !entityId) setJobDeployedForEntity(null);
+
+		if (!shouldPoll) return;
+
+		if (jobDeployedForEntity !== entityId && entityId) {
+			clientGqlService.request(DeployUpdateMediaEntityJobDocument, {
+				entityId,
+				entityLot,
+			});
+			setJobDeployedForEntity(entityId);
+		}
+
+		isPollingRef.current = true;
+		setIsPartialStatusActive(true);
+		scheduleNextPoll();
+
+		return resetPollingState;
+	}, [
+		onUpdate,
+		entityId,
+		entityLot,
+		partialStatus,
+		scheduleNextPoll,
+		resetPollingState,
+		externalLinkSource,
+		jobDeployedForEntity,
+	]);
+
+	return { isPartialStatusActive };
+};
+
 export const useMetadataDetails = (metadataId?: string, enabled?: boolean) => {
-	return useQuery({ ...getMetadataDetailsQuery(metadataId), enabled });
+	const query = useQuery({ ...getMetadataDetailsQuery(metadataId), enabled });
+
+	const { isPartialStatusActive } = usePartialStatusMonitor({
+		entityId: metadataId,
+		entityLot: EntityLot.Metadata,
+		onUpdate: () => query.refetch(),
+		partialStatus: enabled !== false && query.data?.isPartial,
+		externalLinkSource: query.data?.source || MediaSource.Custom,
+	});
+
+	return [query, isPartialStatusActive] as const;
 };
 
 export const useUserMetadataDetails = (
@@ -101,21 +216,58 @@ export const useUserMetadataDetails = (
 };
 
 export const usePersonDetails = (personId?: string, enabled?: boolean) => {
-	return useQuery({ ...getPersonDetailsQuery(personId), enabled });
+	const query = useQuery({ ...getPersonDetailsQuery(personId), enabled });
+
+	const { isPartialStatusActive } = usePartialStatusMonitor({
+		entityId: personId,
+		entityLot: EntityLot.Person,
+		onUpdate: () => query.refetch(),
+		partialStatus: enabled !== false && query.data?.details.isPartial,
+		externalLinkSource: query.data?.details.source || MediaSource.Custom,
+	});
+
+	return [query, isPartialStatusActive] as const;
 };
 
 export const useUserPersonDetails = (personId?: string, enabled?: boolean) => {
 	return useQuery({ ...getUserPersonDetailsQuery(personId), enabled });
 };
 
+export const useExerciseDetails = (exerciseId?: string, enabled?: boolean) => {
+	return useQuery({
+		...getExerciseDetailsQuery(exerciseId || ""),
+		enabled,
+	});
+};
+
+export const useUserExerciseDetails = (
+	exerciseId?: string,
+	enabled?: boolean,
+) => {
+	return useQuery({
+		...getUserExerciseDetailsQuery(exerciseId || ""),
+		enabled,
+	});
+};
+
 export const useMetadataGroupDetails = (
 	metadataGroupId?: string,
 	enabled?: boolean,
 ) => {
-	return useQuery({
+	const query = useQuery({
 		...getMetadataGroupDetailsQuery(metadataGroupId),
 		enabled,
 	});
+
+	const { isPartialStatusActive } = usePartialStatusMonitor({
+		entityId: metadataGroupId,
+		onUpdate: () => query.refetch(),
+		entityLot: EntityLot.MetadataGroup,
+		partialStatus: enabled !== false && query.data?.details.isPartial,
+		externalLinkSource: query.data?.details.source || MediaSource.Custom,
+	});
+
+	return [query, isPartialStatusActive] as const;
 };
 
 export const useUserMetadataGroupDetails = (
@@ -128,6 +280,45 @@ export const useUserMetadataGroupDetails = (
 	});
 };
 
+export const useUserPeopleList = (
+	input: UserPeopleListInput,
+	enabled?: boolean,
+) =>
+	useQuery({
+		enabled,
+		queryKey: queryFactory.media.userPeopleList(input).queryKey,
+		queryFn: () =>
+			clientGqlService
+				.request(UserPeopleListDocument, { input })
+				.then((data) => data.userPeopleList),
+	});
+
+export const useUserMetadataList = (
+	input: UserMetadataListInput,
+	enabled?: boolean,
+) =>
+	useQuery({
+		enabled,
+		queryKey: queryFactory.media.userMetadataList(input).queryKey,
+		queryFn: () =>
+			clientGqlService
+				.request(UserMetadataListDocument, { input })
+				.then((data) => data.userMetadataList),
+	});
+
+export const useUserMetadataGroupList = (
+	input: UserMetadataGroupsListInput,
+	enabled?: boolean,
+) =>
+	useQuery({
+		enabled,
+		queryKey: queryFactory.media.userMetadataGroupsList(input).queryKey,
+		queryFn: () =>
+			clientGqlService
+				.request(UserMetadataGroupsListDocument, { input })
+				.then((data) => data.userMetadataGroupsList),
+	});
+
 export const useDashboardLayoutData = () => {
 	const loaderData =
 		useRouteLoaderData<typeof dashboardLoader>("routes/_dashboard");
@@ -135,11 +326,21 @@ export const useDashboardLayoutData = () => {
 	return loaderData;
 };
 
+export const useUserPreferences = () => useUserDetails().preferences;
 export const useCoreDetails = () => useDashboardLayoutData().coreDetails;
 export const useUserDetails = () => useDashboardLayoutData().userDetails;
-export const useUserPreferences = () => useUserDetails().preferences;
-export const useUserCollections = () =>
-	useDashboardLayoutData().userCollections;
+
+export const useUserCollections = () => {
+	const query = useQuery({
+		queryKey: queryFactory.collections.userCollectionsList().queryKey,
+		queryFn: () =>
+			clientGqlService
+				.request(UserCollectionsListDocument)
+				.then((d) => d.userCollectionsList.response),
+	});
+
+	return query.data || [];
+};
 
 export const useNonHiddenUserCollections = () => {
 	const userCollections = useUserCollections();
@@ -205,7 +406,7 @@ export const useApplicationEvents = () => {
 	};
 };
 
-export const forceUpdateEverySecond = () => {
+export const useForceUpdateEverySecond = () => {
 	const forceUpdate = useForceUpdate();
 	useInterval(forceUpdate, 1000);
 };
@@ -234,8 +435,7 @@ export const useIsOnboardingTourCompleted = () => {
 	return dashboardData.isOnboardingTourCompleted;
 };
 
-export const useDeployBulkMetadataProgressUpdateMutation = (title: string) => {
-	const revalidator = useRevalidator();
+export const useDeployBulkMetadataProgressUpdateMutation = (title?: string) => {
 	const events = useApplicationEvents();
 
 	const mutation = useMutation({
@@ -255,10 +455,7 @@ export const useDeployBulkMetadataProgressUpdateMutation = (title: string) => {
 				title: "Progress Updated",
 				message: "Progress will be updated shortly",
 			});
-			events.updateProgress(title);
-			setTimeout(() => {
-				revalidator.revalidate();
-			}, 1500);
+			events.updateProgress(title || "");
 		},
 	});
 
@@ -266,33 +463,33 @@ export const useDeployBulkMetadataProgressUpdateMutation = (title: string) => {
 };
 
 export const useAddEntitiesToCollectionMutation = () => {
-	const revalidator = useRevalidator();
-
 	const mutation = useMutation({
-		onSuccess: () => revalidator.revalidate(),
 		mutationFn: async (input: ChangeCollectionToEntitiesInput) => {
 			await clientGqlService.request(DeployAddEntitiesToCollectionJobDocument, {
 				input,
 			});
+			return input;
+		},
+		onSettled: (d) => {
+			for (const e of d?.entities || []) refreshEntityDetails(e.entityId);
 		},
 	});
-
 	return mutation;
 };
 
 export const useRemoveEntitiesFromCollectionMutation = () => {
-	const revalidator = useRevalidator();
-
 	const mutation = useMutation({
-		onSuccess: () => revalidator.revalidate(),
 		mutationFn: async (input: ChangeCollectionToEntitiesInput) => {
 			await clientGqlService.request(
 				DeployRemoveEntitiesFromCollectionJobDocument,
 				{ input },
 			);
+			return input;
+		},
+		onSettled: (d) => {
+			for (const e of d?.entities || []) refreshEntityDetails(e.entityId);
 		},
 	});
-
 	return mutation;
 };
 
@@ -327,4 +524,41 @@ export const useFormValidation = (dependency?: unknown) => {
 	}, [checkFormValidity, dependency]);
 
 	return { formRef, isFormValid, checkFormValidity };
+};
+
+export const useInvalidateUserDetails = () => {
+	const fetcher = useFetcher();
+	const revalidator = useRevalidator();
+
+	const invalidateUserDetails = useCallback(async () => {
+		fetcher.submit(
+			{ dummy: "data" },
+			{
+				method: "POST",
+				action: $path("/actions", { intent: "invalidateUserDetails" }),
+			},
+		);
+		await new Promise((r) => setTimeout(r, 1000));
+		revalidator.revalidate();
+	}, [fetcher, revalidator]);
+
+	return invalidateUserDetails;
+};
+
+export const useMarkUserOnboardingTourStatus = () => {
+	const userDetails = useUserDetails();
+	const invalidateUserDetails = useInvalidateUserDetails();
+
+	const markUserOnboardingTourAsCompleted = useMutation({
+		mutationFn: async (isComplete: boolean) =>
+			clientGqlService.request(UpdateUserDocument, {
+				input: {
+					userId: userDetails.id,
+					isOnboardingTourCompleted: isComplete,
+				},
+			}),
+		onSuccess: () => invalidateUserDetails(),
+	});
+
+	return markUserOnboardingTourAsCompleted;
 };

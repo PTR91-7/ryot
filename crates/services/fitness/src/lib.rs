@@ -6,13 +6,11 @@ use database_utils::{user_workout_details, user_workout_template_details};
 use dependent_entity_list_utils::{
     user_exercises_list, user_measurements_list, user_workout_templates_list, user_workouts_list,
 };
-use dependent_fitness_utils::{
-    create_custom_exercise, create_or_update_user_workout, create_user_measurement,
-};
+use dependent_fitness_utils::{create_or_update_user_workout, create_user_measurement};
 use dependent_models::{
-    CachedResponse, UpdateCustomExerciseInput, UserExerciseDetails, UserExercisesListResponse,
-    UserMeasurementsListResponse, UserTemplatesOrWorkoutsListInput, UserWorkoutDetails,
-    UserWorkoutTemplateDetails, UserWorkoutsListResponse, UserWorkoutsTemplatesListResponse,
+    CachedResponse, UserExerciseDetails, UserExercisesListResponse, UserMeasurementsListResponse,
+    UserTemplatesOrWorkoutsListInput, UserWorkoutDetails, UserWorkoutTemplateDetails,
+    UserWorkoutsListResponse, UserWorkoutsTemplatesListResponse,
 };
 use fitness_models::{
     UpdateUserExerciseSettings, UpdateUserWorkoutAttributesInput, UserExercisesListInput,
@@ -56,8 +54,8 @@ impl FitnessService {
         &self,
         user_id: String,
         workout_template_id: String,
-    ) -> Result<UserWorkoutTemplateDetails> {
-        user_workout_template_details(&self.0.db, &user_id, workout_template_id).await
+    ) -> Result<CachedResponse<UserWorkoutTemplateDetails>> {
+        user_workout_template_details(&user_id, workout_template_id, &self.0).await
     }
 
     pub async fn create_or_update_user_workout_template(
@@ -98,22 +96,6 @@ impl FitnessService {
         user_exercises_list(&user_id, input, &self.0).await
     }
 
-    pub async fn create_custom_exercise(
-        &self,
-        user_id: &String,
-        input: exercise::Model,
-    ) -> Result<String> {
-        create_custom_exercise(user_id, input, &self.0).await
-    }
-
-    pub async fn update_custom_exercise(
-        &self,
-        user_id: String,
-        input: UpdateCustomExerciseInput,
-    ) -> Result<bool> {
-        exercise_management::update_custom_exercise(&self.0, user_id, input).await
-    }
-
     pub async fn update_user_exercise_settings(
         &self,
         user_id: String,
@@ -136,7 +118,7 @@ impl FitnessService {
         &self,
         user_id: &String,
         workout_id: String,
-    ) -> Result<UserWorkoutDetails> {
+    ) -> Result<CachedResponse<UserWorkoutDetails>> {
         user_workout_details(user_id, workout_id, &self.0).await
     }
 

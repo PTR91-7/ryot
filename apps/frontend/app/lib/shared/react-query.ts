@@ -6,7 +6,6 @@ import {
 	type CollectionContentsInput,
 	type CollectionRecommendationsInput,
 	type GenreDetailsInput,
-	MetadataDetailsDocument,
 	MetadataGroupDetailsDocument,
 	type MetadataGroupSearchInput,
 	type MetadataSearchInput,
@@ -30,14 +29,10 @@ import { QueryClient, queryOptions, skipToken } from "@tanstack/react-query";
 import { GraphQLClient } from "graphql-request";
 import Cookies from "js-cookie";
 import { FRONTEND_AUTH_COOKIE_NAME, applicationBaseUrl } from "./constants";
+import { getMetadataDetails } from "./media-utils";
 
 export const queryClient = new QueryClient({
-	defaultOptions: {
-		queries: {
-			staleTime: Number.POSITIVE_INFINITY,
-			placeholderData: (prev: unknown) => prev,
-		},
-	},
+	defaultOptions: { queries: { placeholderData: (prev: unknown) => prev } },
 });
 
 export const clientGqlService = new GraphQLClient(
@@ -114,6 +109,9 @@ const mediaQueryKeys = createQueryKeys("media", {
 });
 
 const collectionQueryKeys = createQueryKeys("collections", {
+	userCollectionsList: () => ({
+		queryKey: ["userCollectionsList"],
+	}),
 	collectionDetailsImages: (collectionId: string) => ({
 		queryKey: ["collectionDetails", "images", collectionId],
 	}),
@@ -153,6 +151,9 @@ const miscellaneousQueryKeys = createQueryKeys("miscellaneous", {
 	usersList: (query?: string) => ({
 		queryKey: ["usersList", query],
 	}),
+	userDetails: (userId?: string) => ({
+		queryKey: ["userDetails", userId],
+	}),
 	presignedS3Url: (key: string) => ({
 		queryKey: ["presignedS3Url", key],
 	}),
@@ -172,12 +173,7 @@ export const queryFactory = mergeQueryKeys(
 export const getMetadataDetailsQuery = (metadataId?: string) =>
 	queryOptions({
 		queryKey: queryFactory.media.metadataDetails(metadataId).queryKey,
-		queryFn: metadataId
-			? () =>
-					clientGqlService
-						.request(MetadataDetailsDocument, { metadataId })
-						.then((data) => data.metadataDetails)
-			: skipToken,
+		queryFn: metadataId ? () => getMetadataDetails(metadataId) : skipToken,
 	});
 
 export const getUserMetadataDetailsQuery = (metadataId?: string) =>
@@ -187,7 +183,7 @@ export const getUserMetadataDetailsQuery = (metadataId?: string) =>
 			? () =>
 					clientGqlService
 						.request(UserMetadataDetailsDocument, { metadataId })
-						.then((data) => data.userMetadataDetails)
+						.then((data) => data.userMetadataDetails.response)
 			: skipToken,
 	});
 
@@ -198,7 +194,7 @@ export const getPersonDetailsQuery = (personId?: string) =>
 			? () =>
 					clientGqlService
 						.request(PersonDetailsDocument, { personId })
-						.then((data) => data.personDetails)
+						.then((data) => data.personDetails.response)
 			: skipToken,
 	});
 
@@ -209,7 +205,7 @@ export const getUserPersonDetailsQuery = (personId?: string) =>
 			? () =>
 					clientGqlService
 						.request(UserPersonDetailsDocument, { personId })
-						.then((data) => data.userPersonDetails)
+						.then((data) => data.userPersonDetails.response)
 			: skipToken,
 	});
 
@@ -220,7 +216,7 @@ export const getMetadataGroupDetailsQuery = (metadataGroupId?: string) =>
 			? () =>
 					clientGqlService
 						.request(MetadataGroupDetailsDocument, { metadataGroupId })
-						.then((data) => data.metadataGroupDetails)
+						.then((data) => data.metadataGroupDetails.response)
 			: skipToken,
 	});
 
@@ -232,7 +228,7 @@ export const getUserMetadataGroupDetailsQuery = (metadataGroupId?: string) =>
 			? () =>
 					clientGqlService
 						.request(UserMetadataGroupDetailsDocument, { metadataGroupId })
-						.then((data) => data.userMetadataGroupDetails)
+						.then((data) => data.userMetadataGroupDetails.response)
 			: skipToken,
 	});
 
@@ -243,9 +239,11 @@ export const refreshEntityDetails = (entityId: string) =>
 				queryFactory.media.personDetails(entityId).queryKey,
 				queryFactory.media.userPersonDetails(entityId).queryKey,
 				queryFactory.media.metadataDetails(entityId).queryKey,
+				queryFactory.fitness.workoutDetails(entityId).queryKey,
 				queryFactory.media.userMetadataDetails(entityId).queryKey,
 				queryFactory.media.metadataGroupDetails(entityId).queryKey,
 				queryFactory.media.userMetadataGroupDetails(entityId).queryKey,
+				queryFactory.fitness.workoutTemplateDetails(entityId).queryKey,
 				queryFactory.media.userGenresList._def,
 				queryFactory.media.userPeopleList._def,
 				queryFactory.media.userMetadataList._def,

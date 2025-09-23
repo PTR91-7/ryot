@@ -58,7 +58,7 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { produce } from "immer";
 import { Fragment, useState } from "react";
-import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 import { Virtuoso } from "react-virtuoso";
 import { $path } from "safe-routes";
 import invariant from "tiny-invariant";
@@ -128,7 +128,6 @@ export default function Page() {
 	const userPreferences = useUserPreferences();
 	const unitSystem = useUserUnitSystem();
 	const userDetails = useUserDetails();
-	const revalidator = useRevalidator();
 	const canCurrentUserUpdate =
 		loaderData.exerciseDetails.source === ExerciseSource.Custom &&
 		userDetails.id === loaderData.exerciseDetails.createdByUserId;
@@ -244,7 +243,6 @@ export default function Page() {
 						loading={updateUserExerciseSettingsMutation.isPending}
 						onClick={async () => {
 							await updateUserExerciseSettingsMutation.mutateAsync();
-							revalidator.revalidate();
 							notifications.show({
 								color: "green",
 								title: "Settings updated",
@@ -394,19 +392,16 @@ export default function Page() {
 										</Group>
 									</>
 								) : null}
-								{loaderData.exerciseDetails.attributes.instructions.length >
-								0 ? (
+								{loaderData.exerciseDetails.instructions.length > 0 ? (
 									<>
 										<Divider />
 										<Text size="xl" fw="bold">
 											Instructions
 										</Text>
 										<List type="ordered" spacing="xs">
-											{loaderData.exerciseDetails.attributes.instructions.map(
-												(d) => (
-													<List.Item key={d}>{d}</List.Item>
-												),
-											)}
+											{loaderData.exerciseDetails.instructions.map((d) => (
+												<List.Item key={d}>{d}</List.Item>
+											))}
 										</List>
 									</>
 								) : null}
@@ -423,7 +418,7 @@ export default function Page() {
 												key={history.workoutId}
 												exerciseIdx={history.idx}
 												entityId={history.workoutId}
-												entityType={FitnessEntity.Workouts}
+												fitnessEntityType={FitnessEntity.Workouts}
 											/>
 										</Box>
 									)}
@@ -602,8 +597,8 @@ export default function Page() {
 											variant="outline"
 											component={Link}
 											to={$path(
-												"/fitness/exercises/:action",
-												{ action: "update" },
+												"/fitness/exercises/update/:action",
+												{ action: "edit" },
 												{ id: loaderData.exerciseDetails.id },
 											)}
 										>

@@ -140,7 +140,6 @@ const FeatureSection = (props: {
 	);
 };
 
-// Feature data structure
 const FEATURE_DATA = [
 	{
 		heading: "Media Tracking",
@@ -170,10 +169,10 @@ const FEATURE_DATA = [
 			},
 			{
 				text: "Consolidated activity and statistics graphs and views across all your media",
-				isPro: true,
 			},
 			{
 				text: "Set time spent manually on seen entries for more accurate tracking of media consumption",
+				isPro: true,
 			},
 			{
 				text: "Get notifications when a new episode is released or your favorite actor is back on screen",
@@ -197,7 +196,8 @@ const FEATURE_DATA = [
 				isPro: true,
 			},
 			{
-				text: "Integrations with Youtube Music and Jellyfin for your music collection",
+				text: "Integrations with YouTube Music and Jellyfin for your music collection",
+				isPro: true,
 			},
 		],
 	},
@@ -228,7 +228,7 @@ const FEATURE_DATA = [
 				text: "Inline history and images of exercises while logging an active workout",
 				isPro: true,
 			},
-			{ text: "Create templates to pre plan workouts beforehand" },
+			{ text: "Create templates to pre-plan workouts", isPro: true },
 			{
 				text: "Graphs of progress for exercises to visualize your progress over time",
 			},
@@ -360,7 +360,6 @@ const FEATURE_CARDS = [
 export default function Page() {
 	return (
 		<div className="min-h-screen">
-			{/* Hero Section */}
 			<section className="py-20 lg:py-32">
 				<div className={SECTION_STYLES}>
 					<div className="text-center mb-16">
@@ -380,7 +379,6 @@ export default function Page() {
 				</div>
 			</section>
 
-			{/* Feature Categories Grid */}
 			<section className="py-20">
 				<div className={SECTION_STYLES}>
 					<div className="text-center mb-16">
@@ -421,7 +419,6 @@ export default function Page() {
 				</div>
 			</section>
 
-			{/* Feature Sections */}
 			{FEATURE_DATA.map((data, index) => (
 				<FeatureSection
 					key={data.heading}
@@ -432,7 +429,6 @@ export default function Page() {
 				/>
 			))}
 
-			{/* Pro Features Callout */}
 			<section className="py-20 bg-gradient-to-r from-orange-50 to-pink-50">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
 					<div className="flex items-center justify-center gap-3 mb-6">

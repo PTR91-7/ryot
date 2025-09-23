@@ -4,7 +4,6 @@ import {
 	BackendError,
 	CoreDetailsDocument,
 	PresignedPutS3UrlDocument,
-	UserCollectionsListDocument,
 	UserDetailsDocument,
 } from "@ryot/generated/graphql/backend/graphql";
 import { type SerializeOptions, parse, serialize } from "cookie";
@@ -23,15 +22,10 @@ import {
 } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
-import { withoutHost } from "ufo";
 import { v4 as randomUUID } from "uuid";
 import { z } from "zod";
-import {
-	FRONTEND_AUTH_COOKIE_NAME,
-	redirectToQueryParam,
-	toastKey,
-} from "~/lib/shared/constants";
-import { queryClient } from "~/lib/shared/react-query";
+import { FRONTEND_AUTH_COOKIE_NAME, toastKey } from "~/lib/shared/constants";
+import { queryClient, queryFactory } from "~/lib/shared/react-query";
 
 export const API_URL = process.env.API_URL || "http://127.0.0.1:8000/backend";
 
@@ -96,19 +90,18 @@ export const getAuthorizationCookie = (request: Request) =>
 	getCookieValue(request, FRONTEND_AUTH_COOKIE_NAME);
 
 export const redirectIfNotAuthenticatedOrUpdated = async (request: Request) => {
+	const getResponseInit = async (toastMessage: string) => ({
+		status: 302,
+		headers: combineHeaders(
+			await createToastHeaders({ type: "error", message: toastMessage }),
+			getLogoutCookies(),
+		),
+	});
 	try {
 		const userDetails = await getUserDetails(request);
-		const getResponseInit = async (toastMessage: string) => ({
-			status: 302,
-			headers: combineHeaders(
-				await createToastHeaders({ type: "error", message: toastMessage }),
-				getLogoutCookies(),
-			),
-		});
 		if (!userDetails || userDetails.__typename === "UserDetailsError") {
-			const nextUrl = withoutHost(request.url);
 			throw redirect(
-				$path("/auth", { [redirectToQueryParam]: nextUrl }),
+				$path("/auth"),
 				await getResponseInit("You must be logged in to view this page"),
 			);
 		}
@@ -120,15 +113,10 @@ export const redirectIfNotAuthenticatedOrUpdated = async (request: Request) => {
 
 		return userDetails;
 	} catch {
-		throw redirect($path("/auth"), {
-			headers: combineHeaders(
-				await createToastHeaders({
-					type: "error",
-					message: "Your session has expired",
-				}),
-				getLogoutCookies(),
-			),
-		});
+		throw redirect(
+			$path("/auth"),
+			await getResponseInit("You must be logged in to view this page"),
+		);
 	}
 };
 
@@ -158,31 +146,19 @@ export const getCoreDetails = async () => {
 };
 
 const getUserDetails = async (request: Request) => {
-	const { userDetails } = await serverGqlService.authenticatedRequest(
-		request,
-		UserDetailsDocument,
-		undefined,
-	);
-	return userDetails;
+	const cookie = getAuthorizationCookie(request);
+	return await queryClient.ensureQueryData({
+		queryKey: queryFactory.miscellaneous.userDetails(cookie).queryKey,
+		queryFn: () =>
+			serverGqlService
+				.authenticatedRequest(request, UserDetailsDocument)
+				.then((d) => d.userDetails),
+	});
 };
 
 export const getUserPreferences = async (request: Request) => {
 	const userDetails = await redirectIfNotAuthenticatedOrUpdated(request);
 	return userDetails.preferences;
-};
-
-export const getUserCollectionsListRaw = async (request: Request) => {
-	const { userCollectionsList } = await serverGqlService.authenticatedRequest(
-		request,
-		UserCollectionsListDocument,
-		{},
-	);
-	return userCollectionsList;
-};
-
-export const getUserCollectionsList = async (request: Request) => {
-	const userCollectionsList = await getUserCollectionsListRaw(request);
-	return userCollectionsList.response;
 };
 
 const uploadFileAndGetKey = async (

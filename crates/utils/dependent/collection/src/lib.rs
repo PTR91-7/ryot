@@ -12,19 +12,20 @@ use database_models::{collection, collection_to_entity, prelude::*, user_to_enti
 use database_utils::server_key_validation_guard;
 use dependent_core_utils::is_server_key_validated;
 use dependent_utility_utils::{
-    associate_user_with_entity, expire_user_collection_contents_cache,
-    expire_user_collections_list_cache, mark_entity_as_recently_consumed,
+    associate_user_with_entity, expire_entity_details_cache, expire_user_collection_contents_cache,
+    expire_user_collections_list_cache,
 };
 use enum_models::EntityLot;
 use futures::try_join;
+use itertools::Itertools;
 use media_models::CreateOrUpdateCollectionInput;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, FromQueryResult, IntoActiveModel,
     Iterable, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, prelude::Expr,
+    sea_query::OnConflict,
 };
-use sea_query::OnConflict;
 use supporting_service::SupportingService;
 use uuid::Uuid;
 
@@ -104,29 +105,17 @@ async fn add_single_entity_to_collection(
             }
             let created = created_collection.insert(&ss.db).await?;
             ryot_log!(debug, "Created collection to entity: {:?}", created);
-            match entity.entity_lot {
-                EntityLot::Workout
-                | EntityLot::WorkoutTemplate
-                | EntityLot::Review
-                | EntityLot::UserMeasurement => {}
-                _ => {
-                    associate_user_with_entity(user_id, &entity.entity_id, entity.entity_lot, ss)
-                        .await
-                        .ok();
-                }
-            }
+
             created
         }
     };
     try_join!(
-        mark_entity_as_recently_consumed(user_id, &entity.entity_id, entity.entity_lot, ss),
-        expire_user_collections_list_cache(user_id, ss),
-        expire_user_collection_contents_cache(user_id, &collection.id, ss)
+        associate_user_with_entity(user_id, &entity.entity_id, entity.entity_lot, ss),
+        expire_user_collection_contents_cache(user_id, &collection.id, ss),
+        ss.perform_application_job(ApplicationJob::Lp(
+            LpApplicationJob::HandleEntityAddedToCollectionEvent(resp.id),
+        ))
     )?;
-    ss.perform_application_job(ApplicationJob::Lp(
-        LpApplicationJob::HandleEntityAddedToCollectionEvent(resp.id),
-    ))
-    .await?;
     Ok(true)
 }
 
@@ -164,7 +153,7 @@ pub async fn create_or_update_collection(
                     let already = Collection::find_by_id(i.clone()).one(&txn).await?.unwrap();
                     if DefaultCollection::iter()
                         .map(|s| s.to_string())
-                        .collect::<Vec<_>>()
+                        .collect_vec()
                         .contains(&already.name)
                     {
                         new_name = already.name;
@@ -261,8 +250,11 @@ async fn remove_single_entity_from_collection(
             .await
             .ok();
     }
-    expire_user_collections_list_cache(user_id, ss).await?;
-    expire_user_collection_contents_cache(user_id, &collect.id, ss).await?;
+    try_join!(
+        expire_user_collections_list_cache(user_id, ss),
+        expire_user_collection_contents_cache(user_id, &collect.id, ss),
+        expire_entity_details_cache(user_id, &entity.entity_id, entity.entity_lot, ss),
+    )?;
     Ok(true)
 }
 

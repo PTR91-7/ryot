@@ -7,19 +7,19 @@ use database_models::{
     collection_to_entity,
     prelude::{Collection, CollectionToEntity, Exercise, Metadata, MetadataGroup, Person, Workout},
 };
-use database_utils::{ilike_sql, item_reviews, user_by_id};
+use database_utils::{apply_columns_search, extract_pagination_params, item_reviews, user_by_id};
 use dependent_models::{
     ApplicationCacheKey, ApplicationCacheValue, BasicUserDetails, CachedResponse,
     CollectionContents, CollectionContentsInput, CollectionContentsResponse, SearchResults,
 };
 use enum_models::EntityLot;
 use media_models::{CollectionContentsSortBy, EntityWithLot};
-use migrations::{AliasedExercise, AliasedMetadata, AliasedMetadataGroup, AliasedPerson};
+use migrations_sql::{AliasedExercise, AliasedMetadata, AliasedMetadataGroup, AliasedPerson};
 use sea_orm::{
     ColumnTrait, EntityTrait, ItemsAndPagesNumber, PaginatorTrait, QueryFilter, QueryOrder,
     QueryTrait,
+    sea_query::{Condition, Expr, Func},
 };
-use sea_query::{Condition, Expr, Func, extension::postgres::PgExpr};
 use supporting_service::SupportingService;
 
 pub async fn collection_contents(
@@ -35,16 +35,10 @@ pub async fn collection_contents(
         }),
         |val| ApplicationCacheValue::UserCollectionContents(Box::new(val)),
         || async {
-            let preferences = user_by_id(user_id, ss).await?.preferences;
-            let take = input
-                .search
-                .clone()
-                .and_then(|s| s.take)
-                .unwrap_or(preferences.general.list_page_size as u64);
+            let (take, page) = extract_pagination_params(input.search.clone(), user_id, ss).await?;
             let search = input.search.unwrap_or_default();
             let sort = input.sort.unwrap_or_default();
             let filter = input.filter.unwrap_or_default();
-            let page: u64 = search.page.unwrap_or(1).try_into().unwrap();
             let maybe_collection = Collection::find_by_id(input.collection_id.clone())
                 .one(&ss.db)
                 .await?;
@@ -59,27 +53,15 @@ pub async fn collection_contents(
                 .left_join(Workout)
                 .filter(collection_to_entity::Column::CollectionId.eq(details.id.clone()))
                 .apply_if(search.query, |query, v| {
-                    query.filter(
-                        Condition::any()
-                            .add(
-                                Expr::col((AliasedMetadata::Table, AliasedMetadata::Title))
-                                    .ilike(ilike_sql(&v)),
-                            )
-                            .add(
-                                Expr::col((
-                                    AliasedMetadataGroup::Table,
-                                    AliasedMetadataGroup::Title,
-                                ))
-                                .ilike(ilike_sql(&v)),
-                            )
-                            .add(
-                                Expr::col((AliasedPerson::Table, AliasedPerson::Name))
-                                    .ilike(ilike_sql(&v)),
-                            )
-                            .add(
-                                Expr::col((AliasedExercise::Table, AliasedExercise::Id))
-                                    .ilike(ilike_sql(&v)),
-                            ),
+                    apply_columns_search(
+                        &v,
+                        query,
+                        [
+                            Expr::col((AliasedMetadata::Table, AliasedMetadata::Title)),
+                            Expr::col((AliasedMetadataGroup::Table, AliasedMetadataGroup::Title)),
+                            Expr::col((AliasedPerson::Table, AliasedPerson::Name)),
+                            Expr::col((AliasedExercise::Table, AliasedExercise::Id)),
+                        ],
                     )
                 })
                 .apply_if(filter.metadata_lot, |query, v| {
@@ -140,8 +122,8 @@ pub async fn collection_contents(
             let results = SearchResults {
                 items,
                 details: SearchDetails {
-                    total_items: number_of_items.try_into().unwrap(),
-                    next_page: (page < number_of_pages).then(|| (page + 1).try_into().unwrap()),
+                    total_items: number_of_items,
+                    next_page: (page < number_of_pages).then(|| page + 1),
                 },
             };
             let user = user_by_id(&details.user_id, ss).await?;

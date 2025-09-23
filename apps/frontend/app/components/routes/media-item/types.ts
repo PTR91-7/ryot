@@ -3,9 +3,10 @@ import type {
 	UserMetadataDetailsQuery,
 } from "@ryot/generated/graphql/backend/graphql";
 
-export type MetadataDetails = MetadataDetailsQuery["metadataDetails"];
+export type MetadataDetails =
+	MetadataDetailsQuery["metadataDetails"]["response"];
 export type UserMetadataDetails =
-	UserMetadataDetailsQuery["userMetadataDetails"];
+	UserMetadataDetailsQuery["userMetadataDetails"]["response"];
 export type Season = NonNullable<
 	MetadataDetails["showSpecifics"]
 >["seasons"][number];

@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use application_utils::get_base_http_client;
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -129,7 +129,7 @@ struct PersonItemResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MetadataSearchResponse<T> {
-    total_hits: i32,
+    total_hits: u64,
     results: Vec<T>,
 }
 
@@ -159,12 +159,11 @@ impl MangaUpdatesService {
 impl MediaProvider for MangaUpdatesService {
     async fn people_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         _display_nsfw: bool,
         _source_specifics: &Option<PersonSourceSpecifics>,
     ) -> Result<SearchResults<PeopleSearchItem>> {
-        let page = page.unwrap_or(1);
         let data: MetadataSearchResponse<PersonItemResponse> = self
             .client
             .post(format!("{URL}/authors/search"))
@@ -174,11 +173,9 @@ impl MediaProvider for MangaUpdatesService {
                 "perpage": PAGE_SIZE,
             }))
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let items = data
             .results
             .into_iter()
@@ -206,21 +203,17 @@ impl MediaProvider for MangaUpdatesService {
             .client
             .get(format!("{URL}/authors/{identity}"))
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let related_data: ItemPersonRelatedSeries = self
             .client
             .post(format!("{URL}/authors/{identity}/series"))
             .json(&serde_json::json!({ "orderby": "year" }))
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let related_metadata = related_data
             .series_list
             .into_iter()
@@ -241,8 +234,6 @@ impl MediaProvider for MangaUpdatesService {
             gender: data.gender,
             place: data.birthplace,
             name: data.name.unwrap(),
-            identifier: identity.to_owned(),
-            source: MediaSource::MangaUpdates,
             birth_date: data.birthday.and_then(|b| {
                 if let (Some(y), Some(m), Some(d)) = (b.year, b.month, b.day) {
                     NaiveDate::from_ymd_opt(y, m, d)
@@ -264,11 +255,9 @@ impl MediaProvider for MangaUpdatesService {
             .client
             .get(format!("{URL}/series/{identifier}"))
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let people = data
             .authors
             .unwrap_or_default()
@@ -300,8 +289,7 @@ impl MediaProvider for MangaUpdatesService {
                 .client
                 .get(format!("{URL}/series/{series_id}"))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?
+                .await?
                 .json::<MetadataItemRecord>()
                 .await
             {
@@ -321,13 +309,10 @@ impl MediaProvider for MangaUpdatesService {
         Ok(MetadataDetails {
             people,
             suggestions,
-            lot: MediaLot::Manga,
             production_status: status,
             title: data.title.unwrap(),
             description: data.description,
-            source: MediaSource::MangaUpdates,
             provider_rating: data.bayesian_rating,
-            identifier: data.series_id.unwrap().to_string(),
             publish_year: data.year.and_then(|y| y.parse().ok()),
             assets: EntityAssets {
                 remote_images: Vec::from_iter(data.image.unwrap().url.original),
@@ -356,12 +341,11 @@ impl MediaProvider for MangaUpdatesService {
 
     async fn metadata_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         _display_nsfw: bool,
         _source_specifics: &Option<MetadataSearchSourceSpecifics>,
     ) -> Result<SearchResults<MetadataSearchItem>> {
-        let page = page.unwrap_or(1);
         let search: MetadataSearchResponse<MetadataItemResponse> = self
             .client
             .post(format!("{URL}/series/search"))
@@ -371,11 +355,9 @@ impl MediaProvider for MangaUpdatesService {
                 "page": page
             }))
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let items = search
             .results
             .into_iter()

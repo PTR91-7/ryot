@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use async_trait::async_trait;
 use common_models::{
     EntityAssets, EntityRemoteVideo, EntityRemoteVideoSource, PersonSourceSpecifics, SearchDetails,
@@ -16,7 +16,6 @@ use media_models::{
     MovieSpecifics, PartialMetadataPerson, PartialMetadataWithoutId, UniqueMediaIdentifier,
 };
 use rust_decimal_macros::dec;
-use serde_json::json;
 use supporting_service::SupportingService;
 use traits::MediaProvider;
 
@@ -38,26 +37,24 @@ impl TmdbMovieService {
 impl MediaProvider for TmdbMovieService {
     async fn metadata_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         display_nsfw: bool,
         _source_specifics: &Option<MetadataSearchSourceSpecifics>,
     ) -> Result<SearchResults<MetadataSearchItem>> {
-        let page = page.unwrap_or(1);
         let rsp = self
             .base
             .client
             .get(format!("{URL}/search/movie"))
-            .query(&json!({
-                "query": query.to_owned(),
-                "page": page,
-                "language": self.base.language,
-                "include_adult": display_nsfw,
-            }))
+            .query(&[
+                ("query", query),
+                ("page", &page.to_string()),
+                ("language", self.base.language.as_str()),
+                ("include_adult", &display_nsfw.to_string()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let search: TmdbListResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let search: TmdbListResponse = rsp.json().await?;
 
         let resp = search
             .results
@@ -84,14 +81,13 @@ impl MediaProvider for TmdbMovieService {
             .base
             .client
             .get(format!("{URL}/movie/{identifier}"))
-            .query(&json!({
-                "language": self.base.language,
-                "append_to_response": "videos",
-            }))
+            .query(&[
+                ("append_to_response", "videos"),
+                ("language", self.base.language.as_str()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let data: TmdbMediaEntry = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let data: TmdbMediaEntry = rsp.json().await?;
         let mut remote_videos = vec![];
         if let Some(vid) = data.videos {
             remote_videos.extend(vid.results.into_iter().map(|vid| EntityRemoteVideo {
@@ -103,13 +99,10 @@ impl MediaProvider for TmdbMovieService {
             .base
             .client
             .get(format!("{URL}/movie/{identifier}/credits"))
-            .query(&json!({
-                "language": self.base.language,
-            }))
+            .query(&[("language", self.base.language.as_str())])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let credits: TmdbCreditsResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let credits: TmdbCreditsResponse = rsp.json().await?;
         let mut people = vec![];
         people.extend(
             credits
@@ -189,10 +182,7 @@ impl MediaProvider for TmdbMovieService {
             watch_providers,
             is_nsfw: data.adult,
             title: title.clone(),
-            lot: MediaLot::Movie,
-            source: MediaSource::Tmdb,
             description: data.overview,
-            identifier: data.id.to_string(),
             production_status: data.status.clone(),
             external_identifiers: Some(external_identifiers),
             original_language: self.base.get_language_name(data.original_language.clone()),
@@ -244,25 +234,23 @@ impl MediaProvider for TmdbMovieService {
 
     async fn metadata_group_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         display_nsfw: bool,
     ) -> Result<SearchResults<MetadataGroupSearchItem>> {
-        let page = page.unwrap_or(1);
         let rsp = self
             .base
             .client
             .get(format!("{URL}/search/collection"))
-            .query(&json!({
-                "query": query.to_owned(),
-                "page": page,
-                "language": self.base.language,
-                "include_adult": display_nsfw,
-            }))
+            .query(&[
+                ("query", query),
+                ("page", &page.to_string()),
+                ("language", self.base.language.as_str()),
+                ("include_adult", &display_nsfw.to_string()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let search: TmdbListResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let search: TmdbListResponse = rsp.json().await?;
         let resp = search
             .results
             .into_iter()
@@ -291,13 +279,11 @@ impl MediaProvider for TmdbMovieService {
             .base
             .client
             .get(format!("{URL}/collection/{identifier}"))
-            .query(&json!({ "language": self.base.language }))
+            .query(&[("language", self.base.language.as_str())])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let mut images = vec![];
         if let Some(i) = data.poster_path {
             images.push(self.base.get_image_url(i));

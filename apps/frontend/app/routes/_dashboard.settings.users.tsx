@@ -20,6 +20,7 @@ import {
 	RegisterUserDocument,
 	ResetUserDocument,
 	UpdateUserDocument,
+	type UpdateUserInput,
 	UserLot,
 	type UsersListQuery,
 } from "@ryot/generated/graphql/backend/graphql";
@@ -33,149 +34,19 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { DataTable } from "mantine-datatable";
 import { useState } from "react";
-import { useNavigate, useRevalidator } from "react-router";
+import { useNavigate } from "react-router";
 import { $path } from "safe-routes";
 import { withQuery } from "ufo";
 import { CopyableTextInput } from "~/components/common";
 import { DebouncedSearchInput } from "~/components/common/filters";
 import { redirectToQueryParam } from "~/lib/shared/constants";
 import { useUserDetails, useUsersList } from "~/lib/shared/hooks";
-import { clientGqlService } from "~/lib/shared/react-query";
+import {
+	clientGqlService,
+	queryClient,
+	queryFactory,
+} from "~/lib/shared/react-query";
 import { openConfirmationModal } from "~/lib/shared/ui-utils";
-
-const showSuccessNotification = (message: string) => {
-	notifications.show({ message, color: "green", title: "Success" });
-};
-
-const showErrorNotification = (message: string) => {
-	notifications.show({ message, color: "red", title: "Error" });
-};
-
-const handleCurrentUserLogout = (
-	navigate: ReturnType<typeof useNavigate>,
-	passwordChangeUrl?: string,
-) => {
-	const changePasswordUrl = passwordChangeUrl || $path("/auth");
-	const logoutRoute = withQuery($path("/api/logout"), {
-		[redirectToQueryParam]: changePasswordUrl,
-	});
-	navigate(logoutRoute);
-};
-
-type UrlDisplayData = {
-	url: string;
-	title: string;
-	description: string;
-} | null;
-
-export const meta = () => {
-	return [{ title: "User Settings | Ryot" }];
-};
-
-const UserInvitationModal = (props: {
-	opened: boolean;
-	onClose: () => void;
-	onSuccess: (data: UrlDisplayData) => void;
-}) => {
-	const revalidator = useRevalidator();
-	const [username, setUsername] = useState("");
-
-	const handleClose = () => {
-		setUsername("");
-		props.onClose();
-	};
-
-	const handleCreateInvitation = () => {
-		if (username.trim()) {
-			createInvitationMutation.mutate(username.trim());
-		}
-	};
-
-	const createInvitationMutation = useMutation({
-		mutationFn: async (username: string) => {
-			const { registerUser } = await clientGqlService.request(
-				RegisterUserDocument,
-				{
-					input: { data: { password: { username, password: "" } } },
-				},
-			);
-
-			if (registerUser.__typename !== "StringIdObject") {
-				throw new Error("Failed to register user");
-			}
-
-			const { getPasswordChangeSession } = await clientGqlService.request(
-				GetPasswordChangeSessionDocument,
-				{ input: { userId: registerUser.id } },
-			);
-
-			return getPasswordChangeSession.passwordChangeUrl;
-		},
-		onSuccess: (createUserInvitation) => {
-			showSuccessNotification("User invitation created successfully");
-			revalidator.revalidate();
-			props.onSuccess({
-				url: createUserInvitation,
-				title: "User Invitation Created",
-				description: "Share this URL with the user to set their password",
-			});
-			handleClose();
-			createInvitationMutation.reset();
-		},
-		onError: () => showErrorNotification("Failed to create user invitation"),
-	});
-
-	return (
-		<Modal
-			centered
-			opened={props.opened}
-			onClose={handleClose}
-			title="Create User Invitation"
-		>
-			<Stack>
-				<TextInput
-					required
-					autoFocus
-					value={username}
-					label="Username"
-					onChange={(e) => setUsername(e.currentTarget.value)}
-				/>
-				{!createInvitationMutation.data && (
-					<Button
-						disabled={!username.trim()}
-						onClick={handleCreateInvitation}
-						loading={createInvitationMutation.isPending}
-					>
-						Create Invitation
-					</Button>
-				)}
-			</Stack>
-		</Modal>
-	);
-};
-
-const UrlDisplayModal = (props: {
-	opened: boolean;
-	onClose: () => void;
-	data: UrlDisplayData;
-}) => {
-	return (
-		<Modal
-			centered
-			opened={props.opened}
-			onClose={props.onClose}
-			title={props.data?.title}
-		>
-			<Stack>
-				<CopyableTextInput
-					value={props.data?.url}
-					description={props.data?.description}
-				/>
-				<Button onClick={props.onClose}>Close</Button>
-			</Stack>
-		</Modal>
-	);
-};
 
 export default function Page() {
 	const [
@@ -216,7 +87,7 @@ export default function Page() {
 					onSuccess={handleInvitationSuccess}
 				/>
 				<DebouncedSearchInput
-					initialValue={query}
+					value={query}
 					onChange={(q) => setQuery(q)}
 					placeholder="Search by name or ID"
 				/>
@@ -309,25 +180,21 @@ const UserActions = (props: {
 	user: User;
 	setUrlDisplayData: (data: UrlDisplayData) => void;
 }) => {
-	const revalidator = useRevalidator();
 	const userDetails = useUserDetails();
 	const navigate = useNavigate();
 
 	const toggleUserStatusMutation = useMutation({
-		mutationFn: async (input: {
-			userId: string;
-			isDisabled: boolean;
-		}) => {
+		mutationFn: async (input: UpdateUserInput) => {
 			const { updateUser } = await clientGqlService.request(
 				UpdateUserDocument,
 				{ input },
 			);
 			return { updateUser, input };
 		},
-		onSuccess: ({ input }) => {
+		onSuccess: async ({ input }) => {
+			invalidateUsersList();
 			const isCurrentUser = input.userId === userDetails.id;
 			showSuccessNotification("User status updated successfully");
-			revalidator.revalidate();
 			if (isCurrentUser && input.isDisabled) {
 				handleCurrentUserLogout(navigate);
 			}
@@ -343,17 +210,17 @@ const UserActions = (props: {
 			);
 			return deleteUser;
 		},
-		onSuccess: (deleteUser) => {
+		onSuccess: async (deleteUser) => {
+			invalidateUsersList();
 			const message = deleteUser
 				? "User deleted successfully"
-				: "User can not be deleted";
+				: "User cannot be deleted";
 			const color = deleteUser ? "green" : "red";
 			notifications.show({
 				color,
 				message,
 				title: deleteUser ? "Success" : "Error",
 			});
-			if (deleteUser) revalidator.revalidate();
 		},
 		onError: () => showErrorNotification("Failed to delete user"),
 	});
@@ -366,8 +233,9 @@ const UserActions = (props: {
 			});
 			return resetUser;
 		},
-		onSuccess: (resetUser) => {
+		onSuccess: async (resetUser) => {
 			if (resetUser.__typename !== "UserResetResponse") return;
+			invalidateUsersList();
 			const isCurrentUser = props.user.id === userDetails.id;
 			if (resetUser.passwordChangeUrl) {
 				if (!isCurrentUser) {
@@ -445,5 +313,143 @@ const UserActions = (props: {
 				</ActionIcon>
 			</Group>
 		</>
+	);
+};
+
+const showSuccessNotification = (message: string) => {
+	notifications.show({ message, color: "green", title: "Success" });
+};
+
+const showErrorNotification = (message: string) => {
+	notifications.show({ message, color: "red", title: "Error" });
+};
+
+const handleCurrentUserLogout = (
+	navigate: ReturnType<typeof useNavigate>,
+	passwordChangeUrl?: string,
+) => {
+	const changePasswordUrl = passwordChangeUrl || $path("/auth");
+	const logoutRoute = withQuery($path("/api/logout"), {
+		[redirectToQueryParam]: changePasswordUrl,
+	});
+	navigate(logoutRoute);
+};
+
+type UrlDisplayData = {
+	url: string;
+	title: string;
+	description: string;
+} | null;
+
+export const meta = () => {
+	return [{ title: "User Settings | Ryot" }];
+};
+
+const invalidateUsersList = () =>
+	queryClient.invalidateQueries({
+		queryKey: queryFactory.miscellaneous.usersList._def,
+	});
+
+const UserInvitationModal = (props: {
+	opened: boolean;
+	onClose: () => void;
+	onSuccess: (data: UrlDisplayData) => void;
+}) => {
+	const [username, setUsername] = useState("");
+
+	const handleClose = () => {
+		setUsername("");
+		props.onClose();
+	};
+
+	const handleCreateInvitation = () => {
+		if (username.trim()) {
+			createInvitationMutation.mutate(username.trim());
+		}
+	};
+
+	const createInvitationMutation = useMutation({
+		mutationFn: async (username: string) => {
+			const { registerUser } = await clientGqlService.request(
+				RegisterUserDocument,
+				{
+					input: { data: { password: { username, password: "" } } },
+				},
+			);
+
+			if (registerUser.__typename !== "StringIdObject") {
+				throw new Error("Failed to register user");
+			}
+
+			const { getPasswordChangeSession } = await clientGqlService.request(
+				GetPasswordChangeSessionDocument,
+				{ input: { userId: registerUser.id } },
+			);
+
+			return getPasswordChangeSession.passwordChangeUrl;
+		},
+		onError: () => showErrorNotification("Failed to create user invitation"),
+		onSuccess: async (createUserInvitation) => {
+			showSuccessNotification("User invitation created successfully");
+			props.onSuccess({
+				url: createUserInvitation,
+				title: "User Invitation Created",
+				description: "Share this URL with the user to set their password",
+			});
+			invalidateUsersList();
+			handleClose();
+			createInvitationMutation.reset();
+		},
+	});
+
+	return (
+		<Modal
+			centered
+			opened={props.opened}
+			onClose={handleClose}
+			title="Create User Invitation"
+		>
+			<Stack>
+				<TextInput
+					required
+					autoFocus
+					value={username}
+					label="Username"
+					onChange={(e) => setUsername(e.currentTarget.value)}
+				/>
+				{!createInvitationMutation.data && (
+					<Button
+						disabled={!username.trim()}
+						onClick={handleCreateInvitation}
+						loading={createInvitationMutation.isPending}
+					>
+						Create Invitation
+					</Button>
+				)}
+			</Stack>
+		</Modal>
+	);
+};
+
+const UrlDisplayModal = (props: {
+	opened: boolean;
+	onClose: () => void;
+	data: UrlDisplayData;
+}) => {
+	return (
+		<Modal
+			centered
+			opened={props.opened}
+			onClose={props.onClose}
+			title={props.data?.title}
+		>
+			<Stack>
+				<CopyableTextInput
+					value={props.data?.url}
+					description={props.data?.description}
+				/>
+				<Button onClick={props.onClose}>Close</Button>
+			</Stack>
+		</Modal>
 	);
 };

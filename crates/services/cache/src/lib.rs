@@ -10,8 +10,9 @@ use dependent_models::{
     GetCacheKeyResponse,
 };
 use itertools::Itertools;
-use sea_orm::{ActiveValue, ColumnTrait, EntityTrait, QueryFilter};
-use sea_query::OnConflict;
+use sea_orm::{
+    ActiveValue, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, sea_query::OnConflict,
+};
 use serde::de::DeserializeOwned;
 use supporting_service::SupportingService;
 use uuid::Uuid;
@@ -43,8 +44,17 @@ fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) ->
             Duration::hours(ss.config.server.progress_update_threshold)
         }
 
-        ApplicationCacheKey::UserCollectionsList { .. }
-        | ApplicationCacheKey::UserAnalyticsParameters { .. } => Duration::hours(8),
+        ApplicationCacheKey::GenreDetails { .. }
+        | ApplicationCacheKey::PersonDetails { .. }
+        | ApplicationCacheKey::MetadataDetails { .. }
+        | ApplicationCacheKey::UserPersonDetails { .. }
+        | ApplicationCacheKey::UserWorkoutDetails { .. }
+        | ApplicationCacheKey::UserMetadataDetails { .. }
+        | ApplicationCacheKey::UserCollectionsList { .. }
+        | ApplicationCacheKey::MetadataGroupDetails { .. }
+        | ApplicationCacheKey::UserAnalyticsParameters { .. }
+        | ApplicationCacheKey::UserMetadataGroupDetails { .. }
+        | ApplicationCacheKey::UserWorkoutTemplateDetails { .. } => Duration::hours(8),
 
         ApplicationCacheKey::TrendingMetadataIds
         | ApplicationCacheKey::MetadataLookup { .. }
@@ -56,7 +66,8 @@ fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) ->
         | ApplicationCacheKey::TmdbSettings
         | ApplicationCacheKey::ListennotesSettings => Duration::days(5),
 
-        ApplicationCacheKey::UserPasswordChangeSession { .. } => Duration::days(7),
+        ApplicationCacheKey::TvdbSettings
+        | ApplicationCacheKey::UserPasswordChangeSession { .. } => Duration::days(7),
 
         ApplicationCacheKey::MetadataProgressUpdateInProgressCache { .. } => Duration::days(60),
 
@@ -72,12 +83,13 @@ fn should_respect_version(key: &ApplicationCacheKey) -> bool {
         ApplicationCacheKey::CoreDetails
             | ApplicationCacheKey::IgdbSettings
             | ApplicationCacheKey::TmdbSettings
+            | ApplicationCacheKey::TvdbSettings
             | ApplicationCacheKey::SpotifyAccessToken
             | ApplicationCacheKey::ListennotesSettings
     )
 }
 
-pub async fn set_keys_with_custom_expiry(
+async fn set_keys_with_custom_expiry(
     ss: &Arc<SupportingService>,
     items: Vec<(ApplicationCacheKey, ApplicationCacheValue)>,
     custom_expiry: Option<Duration>,
@@ -174,23 +186,30 @@ pub async fn get_values(
         .map(|k| serde_json::to_string(k).unwrap())
         .collect_vec();
     let caches = ApplicationCache::find()
+        .select_only()
+        .columns([
+            application_cache::Column::Id,
+            application_cache::Column::Key,
+            application_cache::Column::Value,
+        ])
         .filter(application_cache::Column::Key.is_in(string_keys))
         .filter(application_cache::Column::ExpiresAt.gt(Utc::now()))
+        .filter(
+            application_cache::Column::Version
+                .is_null()
+                .or(application_cache::Column::Version.eq(ss.server_start_time.to_string())),
+        )
+        .into_tuple::<(Uuid, String, serde_json::Value)>()
         .all(&ss.db)
         .await?;
 
     let mut values = HashMap::new();
-    for cache in caches {
-        if let Some(cache_version) = cache.version {
-            if cache_version != ss.server_start_time.to_string() {
-                continue;
-            }
-        }
+    for (id, key, value) in caches {
         values.insert(
-            serde_json::from_str(&cache.key).unwrap(),
+            serde_json::from_str(&key).unwrap(),
             GetCacheKeyResponse {
-                id: cache.id,
-                value: serde_json::from_value(cache.value)?,
+                id,
+                value: serde_json::from_value(value)?,
             },
         );
     }

@@ -5,6 +5,7 @@ use common_models::{ChangeCollectionToEntitiesInput, DefaultCollection, EntityTo
 use common_utils::SHOW_SPECIAL_SEASON_NAMES;
 use database_models::{prelude::*, seen};
 use dependent_collection_utils::{add_entities_to_collection, remove_entities_from_collection};
+use dependent_details_utils::metadata_details;
 use dependent_models::{ApplicationCacheKeyDiscriminants, ExpireCacheKeyInput};
 use enum_models::{EntityLot, MediaLot, SeenState};
 use itertools::Itertools;
@@ -12,19 +13,19 @@ use rust_decimal::{
     Decimal,
     prelude::{One, ToPrimitive},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use supporting_service::SupportingService;
 
 pub async fn seen_history(
     user_id: &String,
     metadata_id: &String,
-    db: &DatabaseConnection,
+    ss: &Arc<SupportingService>,
 ) -> Result<Vec<seen::Model>> {
     let seen_items = Seen::find()
         .filter(seen::Column::UserId.eq(user_id))
         .filter(seen::Column::MetadataId.eq(metadata_id))
         .order_by_desc(seen::Column::LastUpdatedOn)
-        .all(db)
+        .all(&ss.db)
         .await
         .unwrap();
     Ok(seen_items)
@@ -33,14 +34,14 @@ pub async fn seen_history(
 pub async fn is_metadata_finished_by_user(
     user_id: &String,
     metadata_id: &String,
-    db: &DatabaseConnection,
+    ss: &Arc<SupportingService>,
 ) -> Result<(bool, Vec<seen::Model>)> {
     let metadata = Metadata::find_by_id(metadata_id)
-        .one(db)
+        .one(&ss.db)
         .await
         .unwrap()
         .unwrap();
-    let seen_history = seen_history(user_id, metadata_id, db).await?;
+    let seen_history = seen_history(user_id, metadata_id, ss).await?;
     let is_finished = if metadata.lot == MediaLot::Podcast
         || metadata.lot == MediaLot::Show
         || metadata.lot == MediaLot::Anime
@@ -160,17 +161,13 @@ pub async fn handle_after_metadata_seen_tasks(
                 .ok();
         }
         SeenState::Completed => {
-            let metadata = Metadata::find_by_id(&seen.metadata_id)
-                .one(&ss.db)
-                .await?
-                .unwrap();
-            if metadata.lot == MediaLot::Podcast
-                || metadata.lot == MediaLot::Show
-                || metadata.lot == MediaLot::Anime
-                || metadata.lot == MediaLot::Manga
-            {
+            let metadata = metadata_details(ss, &seen.metadata_id).await?;
+            if matches!(
+                metadata.response.lot,
+                MediaLot::Podcast | MediaLot::Show | MediaLot::Anime | MediaLot::Manga
+            ) {
                 let (is_complete, _) =
-                    is_metadata_finished_by_user(&seen.user_id, &seen.metadata_id, &ss.db).await?;
+                    is_metadata_finished_by_user(&seen.user_id, &seen.metadata_id, ss).await?;
                 if is_complete {
                     remove_entities_from_collection(&DefaultCollection::InProgress.to_string())
                         .await?;
@@ -184,9 +181,9 @@ pub async fn handle_after_metadata_seen_tasks(
                 add_entities_to_collection(&DefaultCollection::Completed.to_string())
                     .await
                     .ok();
-                remove_entities_from_collection(&DefaultCollection::InProgress.to_string())
-                    .await
-                    .ok();
+                for col in &[DefaultCollection::InProgress, DefaultCollection::Monitoring] {
+                    remove_entities_from_collection(&col.to_string()).await.ok();
+                }
             };
         }
     };

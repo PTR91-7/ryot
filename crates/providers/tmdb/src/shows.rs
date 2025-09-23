@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use async_trait::async_trait;
 use common_models::{
     EntityAssets, EntityRemoteVideo, EntityRemoteVideoSource, PersonSourceSpecifics, SearchDetails,
 };
 use common_utils::{SHOW_SPECIAL_SEASON_NAMES, convert_date_to_year, convert_string_to_date};
 use dependent_models::{MetadataSearchSourceSpecifics, SearchResults};
-use enum_models::{MediaLot, MediaSource};
+use enum_models::MediaSource;
 use futures::{
     stream::{self, StreamExt},
     try_join,
@@ -19,7 +19,6 @@ use media_models::{
     ShowEpisode, ShowSeason, ShowSpecifics,
 };
 use rust_decimal_macros::dec;
-use serde_json::json;
 use supporting_service::SupportingService;
 use traits::MediaProvider;
 
@@ -44,14 +43,13 @@ impl MediaProvider for TmdbShowService {
             .base
             .client
             .get(format!("{}/tv/{}", URL, &identifier))
-            .query(&json!({
-                "language": self.base.language,
-                "append_to_response": "videos",
-            }))
+            .query(&[
+                ("language", self.base.language.as_str()),
+                ("append_to_response", "videos"),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let show_data: TmdbMediaEntry = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let show_data: TmdbMediaEntry = rsp.json().await?;
         let mut remote_videos = vec![];
         if let Some(vid) = show_data.videos {
             remote_videos.extend(vid.results.into_iter().map(|vid| EntityRemoteVideo {
@@ -163,13 +161,10 @@ impl MediaProvider for TmdbShowService {
             people,
             suggestions,
             watch_providers,
-            lot: MediaLot::Show,
             title: title.clone(),
             is_nsfw: show_data.adult,
-            source: MediaSource::Tmdb,
             description: show_data.overview,
             production_status: show_data.status,
-            identifier: show_data.id.to_string(),
             external_identifiers: Some(external_identifiers),
             original_language: self.base.get_language_name(show_data.original_language),
             publish_year: convert_date_to_year(
@@ -259,26 +254,24 @@ impl MediaProvider for TmdbShowService {
 
     async fn metadata_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         display_nsfw: bool,
         _source_specifics: &Option<MetadataSearchSourceSpecifics>,
     ) -> Result<SearchResults<MetadataSearchItem>> {
-        let page = page.unwrap_or(1);
         let rsp = self
             .base
             .client
             .get(format!("{URL}/search/tv"))
-            .query(&json!({
-                "query": query.to_owned(),
-                "page": page,
-                "language": self.base.language,
-                "include_adult": display_nsfw,
-            }))
+            .query(&[
+                ("query", query),
+                ("page", &page.to_string()),
+                ("language", self.base.language.as_str()),
+                ("include_adult", &display_nsfw.to_string()),
+            ])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let search: TmdbListResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let search: TmdbListResponse = rsp.json().await?;
         let resp = search
             .results
             .into_iter()
@@ -312,7 +305,7 @@ pub async fn fetch_season_with_credits(
     let season_data_future = base
         .client
         .get(format!("{URL}/tv/{identifier}/season/{season_number}"))
-        .query(&json!({ "language": base.language }))
+        .query(&[("language", base.language.as_str())])
         .send();
 
     let season_credits_future = base
@@ -320,13 +313,13 @@ pub async fn fetch_season_with_credits(
         .get(format!(
             "{URL}/tv/{identifier}/season/{season_number}/credits"
         ))
-        .query(&json!({ "language": base.language }))
+        .query(&[("language", base.language.as_str())])
         .send();
 
     let (season_resp, credits_resp) = try_join!(season_data_future, season_credits_future)?;
 
-    let mut season_data: TmdbSeason = season_resp.json().await.map_err(|e| anyhow!(e))?;
-    let credits: TmdbSeasonCredit = credits_resp.json().await.map_err(|e| anyhow!(e))?;
+    let mut season_data: TmdbSeason = season_resp.json().await?;
+    let credits: TmdbSeasonCredit = credits_resp.json().await?;
 
     for episode in season_data.episodes.iter_mut() {
         episode.guest_stars.extend(credits.cast.clone());

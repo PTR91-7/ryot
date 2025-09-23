@@ -1,17 +1,11 @@
 import {
 	type EntityLot,
 	MediaLot,
-	MediaSource,
-	MetadataDetailsDocument,
 	type ReviewItem,
 } from "@ryot/generated/graphql/backend/graphql";
 import { atom, useAtom } from "jotai";
-import { useState } from "react";
-import type { DeepPartial } from "ts-essentials";
 import { match } from "ts-pattern";
-import { METADATA_LOTS_WITH_GRANULAR_UPDATES } from "~/components/routes/media-item/constants";
 import {
-	clientGqlService,
 	getMetadataDetailsQuery,
 	getUserMetadataDetailsQuery,
 	queryClient,
@@ -35,39 +29,18 @@ export type UpdateProgressData = {
 
 const metadataProgressUpdateAtom = atom<UpdateProgressData | null>(null);
 
-const getUpdateMetadata = async (metadataId: string) => {
-	const meta = await queryClient.ensureQueryData(
-		getMetadataDetailsQuery(metadataId),
-	);
-	if (
-		!meta.isPartial ||
-		meta.source === MediaSource.Custom ||
-		!METADATA_LOTS_WITH_GRANULAR_UPDATES.includes(meta.lot)
-	)
-		return meta;
-
-	const { metadataDetails } = await clientGqlService.request(
-		MetadataDetailsDocument,
-		{ metadataId, ensureUpdated: true },
-	);
-	await queryClient.invalidateQueries({
-		queryKey: getMetadataDetailsQuery(metadataId).queryKey,
-	});
-	return metadataDetails;
-};
-
 export const useMetadataProgressUpdate = () => {
-	const [isMetadataToUpdateLoading, setIsLoading] = useState(false);
-	const [metadataToUpdate, setProgress] = useAtom(metadataProgressUpdateAtom);
+	const [metadataToUpdate, updateMetadataToUpdate] = useAtom(
+		metadataProgressUpdateAtom,
+	);
 
 	const initializeMetadataToUpdate = async (
 		draft: UpdateProgressData | null,
 		determineNext?: boolean,
 	) => {
-		setIsLoading(true);
 		if (draft) {
 			const [metadataDetails, userMetadataDetails] = await Promise.all([
-				getUpdateMetadata(draft.metadataId),
+				queryClient.ensureQueryData(getMetadataDetailsQuery(draft.metadataId)),
 				queryClient.ensureQueryData(
 					getUserMetadataDetailsQuery(draft.metadataId),
 				),
@@ -96,19 +69,13 @@ export const useMetadataProgressUpdate = () => {
 				}
 			}
 		}
-		setIsLoading(false);
-		setProgress(draft);
-	};
-
-	const updateMetadataToUpdate = (draft: UpdateProgressData | null) => {
-		setProgress(draft);
+		updateMetadataToUpdate(draft);
 	};
 
 	return {
 		metadataToUpdate,
-		initializeMetadataToUpdate,
 		updateMetadataToUpdate,
-		isMetadataToUpdateLoading,
+		initializeMetadataToUpdate,
 	};
 };
 
@@ -117,7 +84,7 @@ export type ReviewEntityData = {
 	entityLot: EntityLot;
 	entityTitle: string;
 	metadataLot?: MediaLot;
-	existingReview?: DeepPartial<ReviewItem>;
+	existingReview?: Partial<ReviewItem>;
 };
 
 export const reviewEntityAtom = atom<ReviewEntityData | null>(null);

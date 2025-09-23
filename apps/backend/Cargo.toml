@@ -35,6 +35,8 @@ collection-resolver = { workspace = true }
 collection-service = { workspace = true }
 common-utils = { workspace = true }
 config-definition = { workspace = true }
+custom-resolver = { workspace = true }
+custom-service = { workspace = true }
 dependent-models = { workspace = true }
 env-utils = { workspace = true }
 exporter-resolver = { workspace = true }
@@ -46,7 +48,7 @@ fitness-service = { workspace = true }
 importer-resolver = { workspace = true }
 importer-service = { workspace = true }
 integration-service = { workspace = true }
-migrations = { workspace = true }
+migrations-sql = { workspace = true }
 miscellaneous-grouping-resolver = { workspace = true }
 miscellaneous-metadata-resolver = { workspace = true }
 miscellaneous-search-resolver = { workspace = true }

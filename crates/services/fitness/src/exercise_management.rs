@@ -12,16 +12,15 @@ use database_utils::{
     entity_in_collections_with_details, item_reviews, schedule_user_for_workout_revision,
     transform_entity_assets,
 };
-use dependent_models::{UpdateCustomExerciseInput, UserExerciseDetails};
+use dependent_models::UserExerciseDetails;
 use enum_models::{EntityLot, ExerciseLot, ExerciseSource};
 use fitness_models::{
-    ExerciseAttributes, ExerciseCategory, GithubExercise, GithubExerciseAttributes,
-    UpdateUserExerciseSettings, UserToExerciseExtraInformation,
+    ExerciseCategory, GithubExercise, GithubExerciseAttributes, UpdateUserExerciseSettings,
+    UserToExerciseExtraInformation,
 };
 use futures::try_join;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait,
-    QueryFilter,
+    ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
 };
 use supporting_service::SupportingService;
 
@@ -35,7 +34,7 @@ pub async fn exercise_details(
     match maybe_exercise {
         None => bail!("Exercise with the given ID could not be found."),
         Some(mut e) => {
-            transform_entity_assets(&mut e.attributes.assets, ss).await?;
+            transform_entity_assets(&mut e.assets, ss).await?;
             Ok(e)
         }
     }
@@ -47,7 +46,7 @@ pub async fn user_exercise_details(
     exercise_id: String,
 ) -> Result<UserExerciseDetails> {
     let (collections, reviews) = try_join!(
-        entity_in_collections_with_details(&ss.db, &user_id, &exercise_id, EntityLot::Exercise),
+        entity_in_collections_with_details(&user_id, &exercise_id, EntityLot::Exercise, ss),
         item_reviews(&user_id, &exercise_id, EntityLot::Exercise, true, ss)
     )?;
     let mut resp = UserExerciseDetails {
@@ -69,41 +68,6 @@ pub async fn user_exercise_details(
         resp.details = Some(association);
     }
     Ok(resp)
-}
-
-pub async fn update_custom_exercise(
-    ss: &Arc<SupportingService>,
-    user_id: String,
-    input: UpdateCustomExerciseInput,
-) -> Result<bool> {
-    let id = input.update.id.clone();
-    let mut update = input.update.clone();
-    let old_exercise = Exercise::find_by_id(&id).one(&ss.db).await?.unwrap();
-    for image in old_exercise.attributes.assets.s3_images.clone() {
-        file_storage_service::delete_object(ss, image).await?;
-    }
-    if input.should_delete.unwrap_or_default() {
-        let ute = UserToEntity::find()
-            .filter(user_to_entity::Column::UserId.eq(&user_id))
-            .filter(user_to_entity::Column::ExerciseId.eq(&id))
-            .one(&ss.db)
-            .await?
-            .ok_or_else(|| anyhow!("Exercise does not exist"))?;
-        if let Some(exercise_extra_information) = ute.exercise_extra_information {
-            if !exercise_extra_information.history.is_empty() {
-                bail!("Exercise is associated with one or more workouts.",);
-            }
-        }
-        old_exercise.delete(&ss.db).await?;
-        return Ok(true);
-    }
-    update.source = ExerciseSource::Custom;
-    update.created_by_user_id = Some(user_id.clone());
-    let input = update.into_active_model();
-    let mut input = input.reset_all();
-    input.id = ActiveValue::Unchanged(id);
-    input.update(&ss.db).await?;
-    Ok(true)
 }
 
 pub async fn update_user_exercise_settings(
@@ -165,8 +129,10 @@ pub async fn merge_exercise(
         .one(&ss.db)
         .await?
         .ok_or_else(|| anyhow!("Exercise does not exist"))?;
-    change_exercise_id_in_history(ss, merge_into, old_entity).await?;
-    schedule_user_for_workout_revision(&user_id, ss).await?;
+    try_join!(
+        schedule_user_for_workout_revision(&user_id, ss),
+        change_exercise_id_in_history(ss, merge_into, old_entity),
+    )?;
     Ok(true)
 }
 
@@ -222,13 +188,11 @@ pub async fn get_all_exercises_from_dataset(
 }
 
 pub async fn update_github_exercise(ss: &Arc<SupportingService>, ex: GithubExercise) -> Result<()> {
-    let attributes = ExerciseAttributes {
-        instructions: ex.attributes.instructions,
-        assets: EntityAssets {
-            remote_images: ex.attributes.images,
-            ..Default::default()
-        },
+    let assets = EntityAssets {
+        remote_images: ex.attributes.images,
+        ..Default::default()
     };
+    let instructions = ex.attributes.instructions;
     let mut muscles = ex.attributes.primary_muscles;
     muscles.extend(ex.attributes.secondary_muscles);
     if let Some(e) = Exercise::find()
@@ -239,8 +203,9 @@ pub async fn update_github_exercise(ss: &Arc<SupportingService>, ex: GithubExerc
     {
         ryot_log!(debug, "Updating existing exercise with id: {}", ex.name);
         let mut db_ex = e.into_active_model();
-        db_ex.attributes = ActiveValue::Set(attributes);
+        db_ex.assets = ActiveValue::Set(assets);
         db_ex.muscles = ActiveValue::Set(muscles);
+        db_ex.instructions = ActiveValue::Set(instructions);
         db_ex.update(&ss.db).await?;
     } else {
         let lot = match ex.attributes.category {
@@ -253,16 +218,17 @@ pub async fn update_github_exercise(ss: &Arc<SupportingService>, ex: GithubExerc
         };
         let db_exercise = exercise::ActiveModel {
             lot: ActiveValue::Set(lot),
+            assets: ActiveValue::Set(assets),
             muscles: ActiveValue::Set(muscles),
             id: ActiveValue::Set(ex.name.clone()),
             name: ActiveValue::Set(ex.name.clone()),
-            attributes: ActiveValue::Set(attributes),
             created_by_user_id: ActiveValue::Set(None),
             level: ActiveValue::Set(ex.attributes.level),
+            instructions: ActiveValue::Set(instructions),
             force: ActiveValue::Set(ex.attributes.force),
             source: ActiveValue::Set(ExerciseSource::Github),
-            equipment: ActiveValue::Set(ex.attributes.equipment),
             mechanic: ActiveValue::Set(ex.attributes.mechanic),
+            equipment: ActiveValue::Set(ex.attributes.equipment),
         };
         let created_exercise = db_exercise.insert(&ss.db).await?;
         ryot_log!(debug, "Created exercise with id: {}", created_exercise.id);

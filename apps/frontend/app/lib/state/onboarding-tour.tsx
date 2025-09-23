@@ -7,19 +7,17 @@ import { cloneDeep, isNumber } from "@ryot/ts-utils";
 import { produce } from "immer";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import Cookies from "js-cookie";
 import type { ReactNode } from "react";
 import type { Step } from "react-joyride";
-import { useNavigate, useRevalidator } from "react-router";
+import { useNavigate } from "react-router";
 import { match } from "ts-pattern";
-import { dayjsLib } from "../shared/date-utils";
 import {
 	useApplicationEvents,
-	useDashboardLayoutData,
+	useMarkUserOnboardingTourStatus,
 	useUserPreferences,
-} from "../shared/hooks";
-import { clientGqlService } from "../shared/react-query";
-import { forcedDashboardPath } from "../shared/ui-utils";
+} from "~/lib/shared/hooks";
+import { clientGqlService } from "~/lib/shared/react-query";
+import { forcedDashboardPath } from "~/lib/shared/ui-utils";
 import { defaultSidebarLinksState, useOpenedSidebarLinks } from "./general";
 
 export const TOUR_EXERCISE_TARGET_ID = "Leg Press";
@@ -69,13 +67,12 @@ const onboardingTourAtom = atomWithStorage<
 >("OnboardingTour", undefined);
 
 export const useOnboardingTour = () => {
-	const [tourState, setTourState] = useAtom(onboardingTourAtom);
+	const navigate = useNavigate();
 	const userPreferences = useUserPreferences();
 	const applicationEvents = useApplicationEvents();
-	const revalidator = useRevalidator();
-	const navigate = useNavigate();
-	const dashboardData = useDashboardLayoutData();
 	const { setOpenedSidebarLinks } = useOpenedSidebarLinks();
+	const markUserOnboardingStatus = useMarkUserOnboardingTourStatus();
+	const [tourState, setTourState] = useAtom(onboardingTourAtom);
 	const isOnboardingTourInProgress =
 		isNumber(tourState?.currentStepIndex) && !tourState?.isCompleted;
 
@@ -102,21 +99,19 @@ export const useOnboardingTour = () => {
 		await clientGqlService.request(UpdateUserPreferenceDocument, {
 			input: newPreferences,
 		});
-		revalidator.revalidate();
+		await markUserOnboardingStatus.mutateAsync(false);
 		setOpenedSidebarLinks(defaultSidebarLinksState);
 		applicationEvents.startOnboardingTour();
 		setTourState({ currentStepIndex: 0 });
 	};
 
-	const completeOnboardingTour = () => {
+	const completeOnboardingTour = async () => {
 		setTourState(
 			produce(tourState, (draft) => {
 				if (draft) draft.isCompleted = true;
 			}),
 		);
-		Cookies.set(dashboardData.onboardingTourCompletedCookie, "true", {
-			expires: dayjsLib().add(1, "year").toDate(),
-		});
+		await markUserOnboardingStatus.mutateAsync(true);
 		applicationEvents.completeOnboardingTour();
 		navigate(forcedDashboardPath);
 	};
@@ -171,11 +166,11 @@ export const useOnboardingTour = () => {
 				<Group>
 					{isOnboardingTourLoading ? <Loader size="xs" /> : null}
 					<Button
+						variant="outline"
 						size="compact-xs"
-						variant="default"
-						onClick={() => {
-							setTourState({ currentStepIndex: onboardingTourSteps.length });
-						}}
+						onClick={() =>
+							setTourState({ currentStepIndex: onboardingTourSteps.length })
+						}
 					>
 						Complete tour
 					</Button>
@@ -351,7 +346,7 @@ export const useOnboardingTour = () => {
 				data: { isSecondaryStep: true },
 				target: OnboardingTourStepTargets.ClickOnMeasurementSidebarSection,
 				content:
-					"You can use track your measurements like body weight, sugar levels, etc. to track your fitness goals.",
+					"You can track measurements like body weight and blood sugar to monitor your fitness goals.",
 			},
 			{
 				target: OnboardingTourStepTargets.ClickOnAnalyticsSidebarSection,

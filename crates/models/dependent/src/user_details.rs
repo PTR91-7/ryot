@@ -5,7 +5,7 @@ use database_models::{
     exercise, metadata_group::MetadataGroupWithoutId, person, seen, user_to_entity, workout,
     workout_template,
 };
-use enum_models::{MediaSource, UserLot, UserToMediaReason};
+use enum_models::{UserLot, UserToMediaReason};
 use fitness_models::UserToExerciseHistoryExtraInformation;
 use media_models::{
     PartialMetadataWithoutId, PersonDetailsGroupedByRole, ReviewItem, UserDetailsError,
@@ -15,10 +15,12 @@ use rust_decimal::Decimal;
 use schematic::Schematic;
 use sea_orm::prelude::DateTimeUtc;
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 use user_models::{UserExtraInformation, UserPreferences};
 use uuid::Uuid;
 
-#[derive(Debug, Default, Serialize, Deserialize, SimpleObject, Clone, Schematic)]
+#[skip_serializing_none]
+#[derive(Debug, PartialEq, Eq, Default, Serialize, Deserialize, SimpleObject, Clone, Schematic)]
 pub struct CollectionToEntityDetails {
     /// The rank of this entity in the collection. This is ignored during importing.
     #[serde(default)]
@@ -31,7 +33,7 @@ pub struct CollectionToEntityDetails {
     pub information: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct GraphqlCollectionToEntityDetails {
     pub id: Uuid,
     pub details: CollectionToEntityDetails,
@@ -53,8 +55,6 @@ pub struct MetadataGroupPersonRelated {
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Hash)]
 pub struct PersonDetails {
     pub name: String,
-    pub identifier: String,
-    pub source: MediaSource,
     pub assets: EntityAssets,
     pub place: Option<String>,
     pub gender: Option<String>,
@@ -96,14 +96,15 @@ pub enum UserDetailsResult {
     Error(UserDetailsError),
 }
 
-#[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct GraphqlPersonDetails {
     pub details: person::Model,
     pub associated_metadata: Vec<PersonDetailsGroupedByRole>,
     pub associated_metadata_groups: Vec<PersonDetailsGroupedByRole>,
 }
 
-#[derive(SimpleObject)]
+#[skip_serializing_none]
+#[derive(Clone, SimpleObject, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserPersonDetails {
     pub has_interacted: bool,
     pub reviews: Vec<ReviewItem>,
@@ -112,7 +113,8 @@ pub struct UserPersonDetails {
     pub collections: Vec<GraphqlCollectionToEntityDetails>,
 }
 
-#[derive(SimpleObject)]
+#[skip_serializing_none]
+#[derive(Clone, SimpleObject, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserMetadataGroupDetails {
     pub has_interacted: bool,
     pub reviews: Vec<ReviewItem>,
@@ -121,7 +123,8 @@ pub struct UserMetadataGroupDetails {
     pub collections: Vec<GraphqlCollectionToEntityDetails>,
 }
 
-#[derive(SimpleObject)]
+#[skip_serializing_none]
+#[derive(Clone, SimpleObject, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserMetadataDetails {
     /// Whether this media has been interacted with
     pub has_interacted: bool,
@@ -151,7 +154,7 @@ pub struct UserMetadataDetails {
     pub podcast_progress: Option<Vec<UserMetadataDetailsEpisodeProgress>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct UserWorkoutDetails {
     pub details: workout::Model,
     pub metadata_consumed: Vec<String>,
@@ -161,12 +164,12 @@ pub struct UserWorkoutDetails {
 #[derive(Debug, Default, Serialize, Deserialize, SimpleObject, Clone)]
 pub struct UserExerciseDetails {
     pub reviews: Vec<ReviewItem>,
-    pub collections: Vec<GraphqlCollectionToEntityDetails>,
     pub details: Option<user_to_entity::Model>,
+    pub collections: Vec<GraphqlCollectionToEntityDetails>,
     pub history: Option<Vec<UserToExerciseHistoryExtraInformation>>,
 }
 
-#[derive(Debug, SimpleObject, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, SimpleObject, Clone, Serialize, Deserialize)]
 pub struct UserWorkoutTemplateDetails {
     pub details: workout_template::Model,
     pub collections: Vec<GraphqlCollectionToEntityDetails>,

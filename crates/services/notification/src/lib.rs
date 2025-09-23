@@ -1,6 +1,6 @@
 use std::env;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use common_utils::{APPLICATION_JSON_HEADER, AVATAR_URL, PROJECT_NAME, ryot_log};
 use convert_case::{Case, Casing};
 use reqwest::{
@@ -26,8 +26,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "title": project_name,
                 }))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
         NotificationPlatformSpecifics::Discord { url } => {
             client
@@ -38,8 +37,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "avatar_url": AVATAR_URL
                 }))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
         NotificationPlatformSpecifics::Gotify {
             url,
@@ -60,8 +58,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                      }
                 }))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
         NotificationPlatformSpecifics::Ntfy {
             url,
@@ -89,11 +86,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
                 );
             }
-            request
-                .body(msg.to_owned())
-                .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+            request.body(msg.to_owned()).send().await?;
         }
         NotificationPlatformSpecifics::PushBullet { api_token } => {
             client
@@ -105,32 +98,29 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "type": "note"
                 }))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
         NotificationPlatformSpecifics::PushOver { key, app_key } => {
-            client.post("https://api.pushover.net/1/messages.json")
-                    .query(&serde_json::json!({
-                        "token":  app_key.clone().unwrap_or_else(|| "abd1semr21hv1i5j5kfkm23wf1kd4u".to_owned()),
-                        "user": key,
-                        "message": msg,
-                        "title": project_name
-                    }))
-                    .send()
-                    .await
-                    .map_err(|e| anyhow!(e))?;
+            client
+                .post("https://api.pushover.net/1/messages.json")
+                .query(&[
+                    ("user", &key),
+                    ("title", &project_name),
+                    ("message", &msg.to_string()),
+                    (
+                        "token",
+                        &app_key.unwrap_or_else(|| "abd1semr21hv1i5j5kfkm23wf1kd4u".to_string()),
+                    ),
+                ])
+                .send()
+                .await?;
         }
         NotificationPlatformSpecifics::PushSafer { key } => {
             client
                 .post("https://www.pushsafer.com/api")
-                .query(&serde_json::json!({
-                    "k": key,
-                    "m": msg,
-                    "t": project_name
-                }))
+                .query(&[("k", &key), ("m", &msg.to_string()), ("t", &project_name)])
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
         NotificationPlatformSpecifics::Telegram { bot_token, chat_id } => {
             client
@@ -143,8 +133,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "parse_mode": "Markdown"
                 }))
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
         }
     }
     Ok(())

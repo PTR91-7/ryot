@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use audible_provider::AudibleService;
 use common_models::BackendError;
-use common_utils::{PAGE_SIZE, PEOPLE_SEARCH_SOURCES, TWO_FACTOR_BACKUP_CODES_COUNT};
+use common_utils::{
+    PAGE_SIZE, PEOPLE_SEARCH_SOURCES, TWO_FACTOR_BACKUP_CODES_COUNT, convert_naive_to_utc, ryot_log,
+};
 use dependent_models::{
     ApplicationCacheKey, ApplicationCacheValue, CoreDetails, CoreDetailsProviderSpecifics,
     ExerciseFilters, ExerciseParameters, ExerciseParametersLotMapping,
@@ -13,12 +16,18 @@ use enum_models::{
     ExerciseEquipment, ExerciseForce, ExerciseLevel, ExerciseLot, ExerciseMechanic, ExerciseMuscle,
     MediaLot, MediaSource,
 };
-use env_utils::APP_VERSION;
+use env_utils::{APP_VERSION, UNKEY_API_ID};
+use futures::try_join;
 use igdb_provider::IgdbService;
 use itertools::Itertools;
-use rustypipe::param::{LANGUAGES, Language};
-use sea_orm::Iterable;
+use itunes_provider::ITunesService;
+use sea_orm::{Iterable, prelude::Date};
+use serde::{Deserialize, Serialize};
 use supporting_service::SupportingService;
+use tmdb_provider::TmdbService;
+use tvdb_provider::TvdbService;
+use unkey::{Client, models::VerifyKeyRequest};
+use youtube_music_provider::YoutubeMusicService;
 
 fn build_metadata_mappings() -> (
     Vec<MetadataLotSourceMappings>,
@@ -64,30 +73,70 @@ fn build_exercise_parameters() -> ExerciseParameters {
     }
 }
 
-fn build_provider_language_information() -> Vec<ProviderLanguageInformation> {
-    MediaSource::iter()
+async fn create_providers(
+    ss: &Arc<SupportingService>,
+) -> Result<(
+    TmdbService,
+    TvdbService,
+    IgdbService,
+    ITunesService,
+    AudibleService,
+    YoutubeMusicService,
+)> {
+    let (
+        tmdb_service,
+        tvdb_service,
+        igdb_service,
+        youtube_music_service,
+        itunes_service,
+        audible_service,
+    ) = try_join!(
+        TmdbService::new(ss.clone()),
+        TvdbService::new(ss.clone()),
+        IgdbService::new(ss.clone()),
+        YoutubeMusicService::new(),
+        ITunesService::new(&ss.config.podcasts.itunes),
+        AudibleService::new(&ss.config.audio_books.audible)
+    )?;
+    Ok((
+        tmdb_service,
+        tvdb_service,
+        igdb_service,
+        itunes_service,
+        audible_service,
+        youtube_music_service,
+    ))
+}
+
+fn build_provider_language_information(
+    tmdb_service: &TmdbService,
+    tvdb_service: &TvdbService,
+    itunes_service: &ITunesService,
+    audible_service: &AudibleService,
+    youtube_music_service: &YoutubeMusicService,
+) -> Result<Vec<ProviderLanguageInformation>> {
+    let information = MediaSource::iter()
         .map(|source| {
             let (supported, default) = match source {
+                MediaSource::Tmdb => (
+                    tmdb_service.get_all_languages(),
+                    tmdb_service.get_default_language(),
+                ),
+                MediaSource::Tvdb => (
+                    tvdb_service.get_all_languages(),
+                    tvdb_service.get_default_language(),
+                ),
                 MediaSource::YoutubeMusic => (
-                    LANGUAGES.iter().map(|l| l.name().to_owned()).collect(),
-                    Language::En.name().to_owned(),
+                    youtube_music_service.get_all_languages(),
+                    youtube_music_service.get_default_language(),
                 ),
                 MediaSource::Itunes => (
-                    ["en_us", "ja_jp"].into_iter().map(String::from).collect(),
-                    "en_us".to_owned(),
+                    itunes_service.get_all_languages(),
+                    itunes_service.get_default_language(),
                 ),
                 MediaSource::Audible => (
-                    ["au", "ca", "de", "es", "fr", "in", "it", "jp", "gb", "us"]
-                        .into_iter()
-                        .map(String::from)
-                        .collect(),
-                    "us".to_owned(),
-                ),
-                MediaSource::Tmdb => (
-                    isolang::languages()
-                        .filter_map(|l| l.to_639_1().map(String::from))
-                        .collect(),
-                    "en".to_owned(),
+                    audible_service.get_all_languages(),
+                    audible_service.get_default_language(),
                 ),
                 MediaSource::Igdb
                 | MediaSource::Vndb
@@ -108,21 +157,61 @@ fn build_provider_language_information() -> Vec<ProviderLanguageInformation> {
                 supported,
             }
         })
-        .collect()
+        .collect();
+    Ok(information)
 }
 
 async fn build_provider_specifics(
-    ss: &Arc<SupportingService>,
+    igdb_service: &IgdbService,
 ) -> Result<CoreDetailsProviderSpecifics> {
     let mut specifics = CoreDetailsProviderSpecifics::default();
 
-    if let Ok(service) = IgdbService::new(ss.clone()).await {
-        if let Ok(igdb) = service.get_provider_specifics().await {
-            specifics.igdb = igdb;
-        }
+    if let Ok(igdb) = igdb_service.get_provider_specifics().await {
+        specifics.igdb = igdb;
     }
 
     Ok(specifics)
+}
+
+async fn get_is_server_key_validated(ss: &Arc<SupportingService>) -> bool {
+    let pro_key = &ss.config.server.pro_key;
+    if pro_key.is_empty() {
+        return false;
+    }
+    ryot_log!(debug, "Verifying Pro Key for API ID: {:#?}", UNKEY_API_ID);
+    #[derive(Debug, Serialize, Clone, Deserialize)]
+    struct Meta {
+        expiry: Option<Date>,
+    }
+    let unkey_client = Client::new("public");
+    let verify_request = VerifyKeyRequest::new(pro_key, &UNKEY_API_ID.to_string());
+    let validated_key = match unkey_client.verify_key(verify_request).await {
+        Ok(verify_response) => {
+            if !verify_response.valid {
+                ryot_log!(debug, "Pro Key is no longer valid.");
+                return false;
+            }
+            verify_response
+        }
+        Err(verify_error) => {
+            ryot_log!(debug, "Pro Key verification error: {:?}", verify_error);
+            return false;
+        }
+    };
+    let key_meta = validated_key
+        .meta
+        .map(|meta| serde_json::from_value::<Meta>(meta).unwrap());
+    ryot_log!(debug, "Expiry: {:?}", key_meta.clone().map(|m| m.expiry));
+    if let Some(meta) = key_meta {
+        if let Some(expiry) = meta.expiry {
+            if ss.server_start_time > convert_naive_to_utc(expiry) {
+                ryot_log!(warn, "Pro Key has expired. Please renew your subscription.");
+                return false;
+            }
+        }
+    }
+    ryot_log!(debug, "Pro Key verified successfully");
+    true
 }
 
 pub async fn core_details(ss: &Arc<SupportingService>) -> Result<CoreDetails> {
@@ -136,11 +225,26 @@ pub async fn core_details(ss: &Arc<SupportingService>) -> Result<CoreDetails> {
                 files_enabled = false;
             }
 
+            let (
+                tmdb_service,
+                tvdb_service,
+                igdb_service,
+                itunes_service,
+                audible_service,
+                youtube_music_service,
+            ) = create_providers(ss).await?;
+
             let (metadata_lot_source_mappings, metadata_group_source_lot_mappings) =
                 build_metadata_mappings();
             let exercise_parameters = build_exercise_parameters();
-            let metadata_provider_languages = build_provider_language_information();
-            let provider_specifics = build_provider_specifics(ss).await?;
+            let metadata_provider_languages = build_provider_language_information(
+                &tmdb_service,
+                &tvdb_service,
+                &itunes_service,
+                &audible_service,
+                &youtube_music_service,
+            )?;
+            let provider_specifics = build_provider_specifics(&igdb_service).await?;
 
             let core_details = CoreDetails {
                 provider_specifics,
@@ -166,7 +270,7 @@ pub async fn core_details(ss: &Arc<SupportingService>) -> Result<CoreDetails> {
                 token_valid_for_days: ss.config.users.token_valid_for_days,
                 two_factor_backup_codes_count: TWO_FACTOR_BACKUP_CODES_COUNT,
                 repository_link: "https://github.com/ignisda/ryot".to_owned(),
-                is_server_key_validated: ss.get_is_server_key_validated().await,
+                is_server_key_validated: get_is_server_key_validated(ss).await,
             };
             Ok(core_details)
         },

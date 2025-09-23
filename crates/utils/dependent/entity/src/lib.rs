@@ -21,22 +21,26 @@ use dependent_models::MetadataBaseData;
 use dependent_provider_utils::{
     details_from_provider, get_metadata_provider, get_non_metadata_provider,
 };
+use dependent_utility_utils::{
+    expire_metadata_details_cache, expire_metadata_group_details_cache, expire_person_details_cache,
+};
 use enum_models::{MetadataToMetadataRelation, UserNotificationContent};
 use futures::{TryFutureExt, try_join};
 use itertools::Itertools;
 use markdown::{CompileOptions, Options, to_html_with_options as markdown_to_html_opts};
 use media_models::{
     CommitMetadataGroupInput, CommitPersonInput, GenreListItem, MediaAssociatedPersonStateChanges,
-    MetadataCreator, MetadataCreatorGroupedByRole, MetadataDetails, PartialMetadataPerson,
+    MetadataCreator, MetadataCreatorsGroupedByRole, MetadataDetails, PartialMetadataPerson,
     PartialMetadataWithoutId, UniqueMediaIdentifier, UpdateMediaEntityResult,
 };
 use nanoid::nanoid;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, FromQueryResult, IntoActiveModel,
     ModelTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    sea_query::{Asterisk, Condition, Expr, JoinType},
 };
-use sea_query::{Asterisk, Condition, Expr, JoinType, OnConflict};
 use supporting_service::SupportingService;
+use traits::TraceOk;
 
 async fn ensure_metadata_updated(
     metadata_id: &String,
@@ -133,6 +137,10 @@ pub async fn change_metadata_associations(
         .filter(metadata_to_metadata::Column::Relation.eq(MetadataToMetadataRelation::Suggestion))
         .exec(&ss.db)
         .await?;
+    MetadataToMetadataGroup::delete_many()
+        .filter(metadata_to_metadata_group::Column::MetadataId.eq(metadata_id))
+        .exec(&ss.db)
+        .await?;
 
     for (index, person) in people.into_iter().enumerate() {
         let role = person.role.clone();
@@ -147,32 +155,38 @@ pub async fn change_metadata_associations(
             ss,
         )
         .await?;
-        let intermediate = metadata_to_person::ActiveModel {
-            role: ActiveValue::Set(role),
-            person_id: ActiveValue::Set(db_person.id),
-            character: ActiveValue::Set(person.character),
-            metadata_id: ActiveValue::Set(metadata_id.to_owned()),
-            index: ActiveValue::Set(Some(index.try_into().unwrap())),
-        };
-        intermediate.insert(&ss.db).await.ok();
+        insert_metadata_person_links(
+            ss,
+            metadata_id,
+            vec![(
+                db_person.id,
+                role,
+                person.character,
+                Some(index.try_into().unwrap()),
+            )],
+        )
+        .await?;
     }
 
     for name in genres {
-        let genre = genre::ActiveModel {
-            id: ActiveValue::Set(format!("gen_{}", nanoid!(12))),
-            name: ActiveValue::Set(name.clone()),
-        };
-        let db_genre = Genre::insert(genre)
-            .on_conflict(
-                OnConflict::column(genre::Column::Name)
-                    .update_column(genre::Column::Name)
-                    .to_owned(),
-            )
-            .exec_with_returning(&ss.db)
+        let maybe_genre = Genre::find()
+            .filter(genre::Column::Name.eq(&name))
+            .one(&ss.db)
             .await?;
+        let genre = match maybe_genre {
+            Some(g) => g,
+            None => {
+                genre::ActiveModel {
+                    name: ActiveValue::Set(name.clone()),
+                    id: ActiveValue::Set(format!("gen_{}", nanoid!(12))),
+                }
+                .insert(&ss.db)
+                .await?
+            }
+        };
 
         let intermediate = metadata_to_genre::ActiveModel {
-            genre_id: ActiveValue::Set(db_genre.id),
+            genre_id: ActiveValue::Set(genre.id),
             metadata_id: ActiveValue::Set(metadata_id.to_owned()),
         };
         intermediate.insert(&ss.db).await.ok();
@@ -181,8 +195,8 @@ pub async fn change_metadata_associations(
     for data in suggestions {
         let (db_partial_metadata, _) = commit_metadata(data, ss, None).await?;
         let intermediate = metadata_to_metadata::ActiveModel {
-            to_metadata_id: ActiveValue::Set(db_partial_metadata.id.clone()),
             from_metadata_id: ActiveValue::Set(metadata_id.to_owned()),
+            to_metadata_id: ActiveValue::Set(db_partial_metadata.id.clone()),
             relation: ActiveValue::Set(MetadataToMetadataRelation::Suggestion),
             ..Default::default()
         };
@@ -199,6 +213,40 @@ pub async fn change_metadata_associations(
         intermediate.insert(&ss.db).await.ok();
     }
 
+    Ok(())
+}
+
+pub async fn insert_metadata_person_links(
+    ss: &Arc<SupportingService>,
+    metadata_id: &str,
+    links: Vec<(String, String, Option<String>, Option<i32>)>,
+) -> Result<()> {
+    for (person_id, role, character, index) in links.into_iter() {
+        let intermediate = metadata_to_person::ActiveModel {
+            role: ActiveValue::Set(role),
+            index: ActiveValue::Set(index),
+            person_id: ActiveValue::Set(person_id),
+            character: ActiveValue::Set(character),
+            metadata_id: ActiveValue::Set(metadata_id.to_owned()),
+        };
+        intermediate.insert(&ss.db).await.ok();
+    }
+    Ok(())
+}
+
+pub async fn insert_metadata_group_links(
+    ss: &Arc<SupportingService>,
+    metadata_id: &str,
+    links: Vec<(String, Option<i32>)>,
+) -> Result<()> {
+    for (metadata_group_id, part) in links.into_iter() {
+        let intermediate = metadata_to_metadata_group::ActiveModel {
+            part: ActiveValue::Set(part.unwrap_or(0)),
+            metadata_id: ActiveValue::Set(metadata_id.to_owned()),
+            metadata_group_id: ActiveValue::Set(metadata_group_id),
+        };
+        intermediate.insert(&ss.db).await.ok();
+    }
     Ok(())
 }
 
@@ -284,6 +332,7 @@ pub async fn update_metadata(
             );
         }
     };
+    expire_metadata_details_cache(metadata_id, ss).await?;
     Ok(result)
 }
 
@@ -447,7 +496,7 @@ async fn generate_metadata_update_notifications(
 }
 
 pub async fn update_metadata_group(
-    metadata_group_id: &str,
+    metadata_group_id: &String,
     ss: &Arc<SupportingService>,
 ) -> Result<UpdateMediaEntityResult> {
     let metadata_group = MetadataGroup::find_by_id(metadata_group_id)
@@ -484,6 +533,7 @@ pub async fn update_metadata_group(
         };
         intermediate.insert(&ss.db).await.ok();
     }
+    expire_metadata_group_details_cache(metadata_group_id, ss).await?;
     Ok(UpdateMediaEntityResult::default())
 }
 
@@ -500,9 +550,13 @@ pub async fn update_person(
     }
     let mut notifications = vec![];
     let provider = get_non_metadata_provider(person.source, ss).await?;
-    let provider_person = provider
+    let Some(provider_person) = provider
         .person_details(&person.identifier, &person.source_specifics)
-        .await?;
+        .await
+        .trace_ok()
+    else {
+        bail!("Failed to retrieve person details");
+    };
     ryot_log!(debug, "Updating person for {:?}", person_id);
 
     let mut current_state_changes = person.clone().state_changes.unwrap_or_default();
@@ -619,6 +673,7 @@ pub async fn update_person(
     }
     to_update_person.state_changes = ActiveValue::Set(Some(current_state_changes));
     to_update_person.update(&ss.db).await.unwrap();
+    expire_person_details_cache(&person_id, ss).await?;
     Ok(UpdateMediaEntityResult { notifications })
 }
 
@@ -715,9 +770,7 @@ pub async fn generic_metadata(
     #[derive(Debug, FromQueryResult)]
     struct PartialCreator {
         id: String,
-        name: String,
         role: String,
-        assets: EntityAssets,
         character: Option<String>,
     }
     let (genres, crts, suggestions, _) = try_join!(
@@ -760,10 +813,9 @@ pub async fn generic_metadata(
     let mut creators: HashMap<String, Vec<_>> = HashMap::new();
     for cr in crts {
         let creator = MetadataCreator {
-            name: cr.name,
-            id: Some(cr.id),
+            is_free: false,
+            id_or_name: cr.id,
             character: cr.character,
-            image: cr.assets.remote_images.first().cloned(),
         };
         creators
             .entry(cr.role)
@@ -775,8 +827,8 @@ pub async fn generic_metadata(
     if let Some(free_creators) = &meta.free_creators {
         for cr in free_creators.clone() {
             let creator = MetadataCreator {
-                name: cr.name,
-                image: cr.image,
+                is_free: true,
+                id_or_name: cr.name,
                 ..Default::default()
             };
             creators
@@ -804,7 +856,7 @@ pub async fn generic_metadata(
     let creators = creators
         .into_iter()
         .sorted_by(|(k1, _), (k2, _)| k1.cmp(k2))
-        .map(|(name, items)| MetadataCreatorGroupedByRole { name, items })
+        .map(|(name, items)| MetadataCreatorsGroupedByRole { name, items })
         .collect_vec();
     Ok(MetadataBaseData {
         genres,

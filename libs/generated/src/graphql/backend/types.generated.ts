@@ -136,6 +136,30 @@ export type CachedCollectionsListResponse = {
   response: Array<CollectionItem>;
 };
 
+export type CachedGenreDetailsResponse = {
+  __typename?: 'CachedGenreDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: GenreDetails;
+};
+
+export type CachedGraphqlMetadataDetailsResponse = {
+  __typename?: 'CachedGraphqlMetadataDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: GraphqlMetadataDetails;
+};
+
+export type CachedGraphqlPersonDetailsResponse = {
+  __typename?: 'CachedGraphqlPersonDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: GraphqlPersonDetails;
+};
+
+export type CachedMetadataGroupDetailsResponse = {
+  __typename?: 'CachedMetadataGroupDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: MetadataGroupDetails;
+};
+
 export type CachedMetadataLookupResponse = {
   __typename?: 'CachedMetadataLookupResponse';
   cacheId: Scalars['UUID']['output'];
@@ -166,10 +190,40 @@ export type CachedUserMeasurementsListResponse = {
   response: Array<UserMeasurement>;
 };
 
+export type CachedUserMetadataDetailsResponse = {
+  __typename?: 'CachedUserMetadataDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: UserMetadataDetails;
+};
+
+export type CachedUserMetadataGroupDetailsResponse = {
+  __typename?: 'CachedUserMetadataGroupDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: UserMetadataGroupDetails;
+};
+
 export type CachedUserMetadataRecommendationsResponse = {
   __typename?: 'CachedUserMetadataRecommendationsResponse';
   cacheId: Scalars['UUID']['output'];
   response: Array<Scalars['String']['output']>;
+};
+
+export type CachedUserPersonDetailsResponse = {
+  __typename?: 'CachedUserPersonDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: UserPersonDetails;
+};
+
+export type CachedUserWorkoutDetailsResponse = {
+  __typename?: 'CachedUserWorkoutDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: UserWorkoutDetails;
+};
+
+export type CachedUserWorkoutTemplateDetailsResponse = {
+  __typename?: 'CachedUserWorkoutTemplateDetailsResponse';
+  cacheId: Scalars['UUID']['output'];
+  response: UserWorkoutTemplateDetails;
 };
 
 export type ChangeCollectionToEntitiesInput = {
@@ -338,14 +392,22 @@ export type CreateAccessLinkInput = {
   redirectTo?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type CreateCustomMetadataGroupInput = {
+  assets: EntityAssetsInput;
+  description?: InputMaybe<Scalars['String']['input']>;
+  lot: MediaLot;
+  title: Scalars['String']['input'];
+};
+
 export type CreateCustomMetadataInput = {
   animeSpecifics?: InputMaybe<AnimeSpecificsInput>;
   assets: EntityAssetsInput;
   audioBookSpecifics?: InputMaybe<AudioBookSpecificsInput>;
   bookSpecifics?: InputMaybe<BookSpecificsInput>;
-  creators?: InputMaybe<Array<Scalars['String']['input']>>;
+  creatorIds?: InputMaybe<Array<Scalars['String']['input']>>;
   description?: InputMaybe<Scalars['String']['input']>;
   genres?: InputMaybe<Array<Scalars['String']['input']>>;
+  groupIds?: InputMaybe<Array<Scalars['String']['input']>>;
   isNsfw?: InputMaybe<Scalars['Boolean']['input']>;
   lot: MediaLot;
   mangaSpecifics?: InputMaybe<MangaSpecificsInput>;
@@ -358,6 +420,18 @@ export type CreateCustomMetadataInput = {
   title: Scalars['String']['input'];
   videoGameSpecifics?: InputMaybe<VideoGameSpecificsInput>;
   visualNovelSpecifics?: InputMaybe<VisualNovelSpecificsInput>;
+};
+
+export type CreateCustomPersonInput = {
+  alternateNames?: InputMaybe<Array<Scalars['String']['input']>>;
+  assets: EntityAssetsInput;
+  birthDate?: InputMaybe<Scalars['NaiveDate']['input']>;
+  deathDate?: InputMaybe<Scalars['NaiveDate']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  gender?: InputMaybe<Scalars['String']['input']>;
+  name: Scalars['String']['input'];
+  place?: InputMaybe<Scalars['String']['input']>;
+  website?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type CreateOrUpdateCollectionInput = {
@@ -629,28 +703,18 @@ export type EntityWithLot = {
 
 export type Exercise = {
   __typename?: 'Exercise';
-  attributes: ExerciseAttributes;
+  assets: EntityAssets;
   createdByUserId?: Maybe<Scalars['String']['output']>;
   equipment?: Maybe<ExerciseEquipment>;
   force?: Maybe<ExerciseForce>;
   id: Scalars['String']['output'];
+  instructions: Array<Scalars['String']['output']>;
   level: ExerciseLevel;
   lot: ExerciseLot;
   mechanic?: Maybe<ExerciseMechanic>;
   muscles: Array<ExerciseMuscle>;
   name: Scalars['String']['output'];
   source: ExerciseSource;
-};
-
-export type ExerciseAttributes = {
-  __typename?: 'ExerciseAttributes';
-  assets: EntityAssets;
-  instructions: Array<Scalars['String']['output']>;
-};
-
-export type ExerciseAttributesInput = {
-  assets: EntityAssetsInput;
-  instructions: Array<Scalars['String']['input']>;
 };
 
 export type ExerciseBestSetRecord = {
@@ -692,15 +756,17 @@ export enum ExerciseForce {
 }
 
 export type ExerciseInput = {
-  attributes: ExerciseAttributesInput;
+  assets: EntityAssetsInput;
   equipment?: InputMaybe<ExerciseEquipment>;
   force?: InputMaybe<ExerciseForce>;
   id: Scalars['String']['input'];
+  instructions: Array<Scalars['String']['input']>;
   level: ExerciseLevel;
   lot: ExerciseLot;
   mechanic?: InputMaybe<ExerciseMechanic>;
   muscles: Array<ExerciseMuscle>;
   name: Scalars['String']['input'];
+  source: ExerciseSource;
 };
 
 export enum ExerciseLevel {
@@ -838,7 +904,7 @@ export type GenreDetails = {
 
 export type GenreDetailsInput = {
   genreId: Scalars['String']['input'];
-  page?: InputMaybe<Scalars['Int']['input']>;
+  search?: InputMaybe<SearchInput>;
 };
 
 export type GenreListItem = {
@@ -886,10 +952,11 @@ export type GraphqlMetadataDetails = {
   audioBookSpecifics?: Maybe<AudioBookSpecifics>;
   bookSpecifics?: Maybe<BookSpecifics>;
   createdByUserId?: Maybe<Scalars['String']['output']>;
-  creators: Array<MetadataCreatorGroupedByRole>;
+  creators: Array<MetadataCreatorsGroupedByRole>;
   description?: Maybe<Scalars['String']['output']>;
+  externalIdentifiers?: Maybe<MetadataExternalIdentifiers>;
   genres: Array<GenreListItem>;
-  group: Array<GraphqlMetadataGroup>;
+  groups: Array<GraphqlMetadataGroup>;
   id: Scalars['String']['output'];
   identifier: Scalars['String']['output'];
   isNsfw?: Maybe<Scalars['Boolean']['output']>;
@@ -917,7 +984,6 @@ export type GraphqlMetadataDetails = {
 export type GraphqlMetadataGroup = {
   __typename?: 'GraphqlMetadataGroup';
   id: Scalars['String']['output'];
-  name: Scalars['String']['output'];
   part: Scalars['Int']['output'];
 };
 
@@ -1188,6 +1254,7 @@ export type MediaCollectionContentsResults = {
 export type MediaCollectionFilter = {
   collectionId: Scalars['String']['input'];
   presence: MediaCollectionPresenceFilter;
+  strategy: MediaCollectionStrategyFilter;
 };
 
 export enum MediaCollectionPresenceFilter {
@@ -1195,10 +1262,16 @@ export enum MediaCollectionPresenceFilter {
   PresentIn = 'PRESENT_IN'
 }
 
+export enum MediaCollectionStrategyFilter {
+  And = 'AND',
+  Or = 'OR'
+}
+
 export type MediaFilter = {
   collections?: InputMaybe<Array<MediaCollectionFilter>>;
   dateRange?: InputMaybe<ApplicationDateRangeInput>;
   general?: InputMaybe<MediaGeneralFilter>;
+  source?: InputMaybe<MediaSource>;
 };
 
 export enum MediaGeneralFilter {
@@ -1256,6 +1329,7 @@ export enum MediaSource {
   Openlibrary = 'OPENLIBRARY',
   Spotify = 'SPOTIFY',
   Tmdb = 'TMDB',
+  Tvdb = 'TVDB',
   Vndb = 'VNDB',
   YoutubeMusic = 'YOUTUBE_MUSIC'
 }
@@ -1263,20 +1337,25 @@ export enum MediaSource {
 export type MetadataCreator = {
   __typename?: 'MetadataCreator';
   character?: Maybe<Scalars['String']['output']>;
-  id?: Maybe<Scalars['String']['output']>;
-  image?: Maybe<Scalars['String']['output']>;
+  idOrName: Scalars['String']['output'];
+  isFree: Scalars['Boolean']['output'];
+};
+
+export type MetadataCreatorsGroupedByRole = {
+  __typename?: 'MetadataCreatorsGroupedByRole';
+  items: Array<MetadataCreator>;
   name: Scalars['String']['output'];
 };
 
-export type MetadataCreatorGroupedByRole = {
-  __typename?: 'MetadataCreatorGroupedByRole';
-  items: Array<MetadataCreator>;
-  name: Scalars['String']['output'];
+export type MetadataExternalIdentifiers = {
+  __typename?: 'MetadataExternalIdentifiers';
+  tvdbId?: Maybe<Scalars['Int']['output']>;
 };
 
 export type MetadataGroup = {
   __typename?: 'MetadataGroup';
   assets: EntityAssets;
+  createdByUserId?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['String']['output'];
   identifier: Scalars['String']['output'];
@@ -1326,7 +1405,8 @@ export type MetadataLotSourceMappings = {
 };
 
 export type MetadataProgressUpdateChange = {
-  changeLatestInProgress?: InputMaybe<MetadataProgressUpdateChangeLatestInProgressInput>;
+  changeLatestInProgress?: InputMaybe<Scalars['Decimal']['input']>;
+  changeLatestState?: InputMaybe<SeenState>;
   createNewCompleted?: InputMaybe<MetadataProgressUpdateChangeCreateNewCompletedInput>;
   createNewInProgress?: InputMaybe<MetadataProgressUpdateNewInProgressInput>;
 };
@@ -1338,15 +1418,11 @@ export type MetadataProgressUpdateChangeCreateNewCompletedInput = {
   withoutDates?: InputMaybe<MetadataProgressUpdateCommonInput>;
 };
 
-export type MetadataProgressUpdateChangeLatestInProgressInput = {
-  progress?: InputMaybe<Scalars['Decimal']['input']>;
-  state?: InputMaybe<SeenState>;
-};
-
 export type MetadataProgressUpdateCommonInput = {
   animeEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   mangaChapterNumber?: InputMaybe<Scalars['Decimal']['input']>;
   mangaVolumeNumber?: InputMaybe<Scalars['Int']['input']>;
+  manualTimeSpent?: InputMaybe<Scalars['Decimal']['input']>;
   podcastEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   providersConsumedOn?: InputMaybe<Array<Scalars['String']['input']>>;
   showEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
@@ -1362,6 +1438,7 @@ export type MetadataProgressUpdateNewInProgressInput = {
   animeEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   mangaChapterNumber?: InputMaybe<Scalars['Decimal']['input']>;
   mangaVolumeNumber?: InputMaybe<Scalars['Int']['input']>;
+  manualTimeSpent?: InputMaybe<Scalars['Decimal']['input']>;
   podcastEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   providersConsumedOn?: InputMaybe<Array<Scalars['String']['input']>>;
   showEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
@@ -1373,6 +1450,7 @@ export type MetadataProgressUpdateStartedAndFinishedOnDateInput = {
   animeEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   mangaChapterNumber?: InputMaybe<Scalars['Decimal']['input']>;
   mangaVolumeNumber?: InputMaybe<Scalars['Int']['input']>;
+  manualTimeSpent?: InputMaybe<Scalars['Decimal']['input']>;
   podcastEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   providersConsumedOn?: InputMaybe<Array<Scalars['String']['input']>>;
   showEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
@@ -1385,6 +1463,7 @@ export type MetadataProgressUpdateStartedOrFinishedOnDateInput = {
   animeEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   mangaChapterNumber?: InputMaybe<Scalars['Decimal']['input']>;
   mangaVolumeNumber?: InputMaybe<Scalars['Int']['input']>;
+  manualTimeSpent?: InputMaybe<Scalars['Decimal']['input']>;
   podcastEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
   providersConsumedOn?: InputMaybe<Array<Scalars['String']['input']>>;
   showEpisodeNumber?: InputMaybe<Scalars['Int']['input']>;
@@ -1458,6 +1537,10 @@ export type MutationRoot = {
   createCustomExercise: Scalars['String']['output'];
   /** Create a custom media item. */
   createCustomMetadata: StringIdObject;
+  /** Create a custom metadata group. */
+  createCustomMetadataGroup: StringIdObject;
+  /** Create a custom person. */
+  createCustomPerson: StringIdObject;
   /** Create a new collection for the logged in user or edit details of an existing one. */
   createOrUpdateCollection: StringIdObject;
   /** Create or update a review. */
@@ -1572,6 +1655,10 @@ export type MutationRoot = {
   updateCustomExercise: Scalars['Boolean']['output'];
   /** Update custom metadata. */
   updateCustomMetadata: Scalars['Boolean']['output'];
+  /** Update a custom metadata group. */
+  updateCustomMetadataGroup: Scalars['Boolean']['output'];
+  /** Update a custom person. */
+  updateCustomPerson: Scalars['Boolean']['output'];
   /** Update the attributes of a seen item. */
   updateSeenItem: Scalars['Boolean']['output'];
   /** Update a user's profile details. */
@@ -1606,6 +1693,16 @@ export type MutationRootCreateCustomExerciseArgs = {
 
 export type MutationRootCreateCustomMetadataArgs = {
   input: CreateCustomMetadataInput;
+};
+
+
+export type MutationRootCreateCustomMetadataGroupArgs = {
+  input: CreateCustomMetadataGroupInput;
+};
+
+
+export type MutationRootCreateCustomPersonArgs = {
+  input: CreateCustomPersonInput;
 };
 
 
@@ -1812,6 +1909,16 @@ export type MutationRootUpdateCustomMetadataArgs = {
 };
 
 
+export type MutationRootUpdateCustomMetadataGroupArgs = {
+  input: UpdateCustomMetadataGroupInput;
+};
+
+
+export type MutationRootUpdateCustomPersonArgs = {
+  input: UpdateCustomPersonInput;
+};
+
+
 export type MutationRootUpdateSeenItemArgs = {
   input: UpdateSeenItemInput;
 };
@@ -1897,6 +2004,7 @@ export type Person = {
   associatedMetadataCount: Scalars['Int']['output'];
   associatedMetadataGroupsCount: Scalars['Int']['output'];
   birthDate?: Maybe<Scalars['NaiveDate']['output']>;
+  createdByUserId?: Maybe<Scalars['String']['output']>;
   createdOn: Scalars['DateTime']['output'];
   deathDate?: Maybe<Scalars['NaiveDate']['output']>;
   description?: Maybe<Scalars['String']['output']>;
@@ -1942,6 +2050,7 @@ export type PersonSourceSpecificsInput = {
   isGiantBombCompany?: InputMaybe<Scalars['Boolean']['input']>;
   isHardcoverPublisher?: InputMaybe<Scalars['Boolean']['input']>;
   isTmdbCompany?: InputMaybe<Scalars['Boolean']['input']>;
+  isTvdbCompany?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 export type PodcastEpisode = {
@@ -2043,7 +2152,7 @@ export type QueryRoot = {
   /** Get details about an exercise. */
   exerciseDetails: Exercise;
   /** Get details about a genre present in the database. */
-  genreDetails: GenreDetails;
+  genreDetails: CachedGenreDetailsResponse;
   /** Get an authorization URL using the configured OIDC client. */
   getOidcRedirectUrl: Scalars['String']['output'];
   /** Get an access token using the configured OIDC client. */
@@ -2051,9 +2160,9 @@ export type QueryRoot = {
   /** Get a presigned URL (valid for 90 minutes) for a given key. */
   getPresignedS3Url: Scalars['String']['output'];
   /** Get details about a media present in the database. */
-  metadataDetails: GraphqlMetadataDetails;
+  metadataDetails: CachedGraphqlMetadataDetailsResponse;
   /** Get details about a metadata group present in the database. */
-  metadataGroupDetails: MetadataGroupDetails;
+  metadataGroupDetails: CachedMetadataGroupDetailsResponse;
   /** Search for a list of groups from a given source. */
   metadataGroupSearch: CachedSearchIdResponse;
   /** Lookup metadata by title. */
@@ -2063,7 +2172,7 @@ export type QueryRoot = {
   /** Search for a list of people from a given source. */
   peopleSearch: CachedSearchIdResponse;
   /** Get details about a creator present in the database. */
-  personDetails: GraphqlPersonDetails;
+  personDetails: CachedGraphqlPersonDetailsResponse;
   /** Get trending media items. */
   trendingMetadata: Array<Scalars['String']['output']>;
   /** Get all access links generated by the currently logged in user. */
@@ -2095,9 +2204,9 @@ export type QueryRoot = {
   /** Get all the measurements for a user. */
   userMeasurementsList: CachedUserMeasurementsListResponse;
   /** Get details that can be displayed to a user for a media. */
-  userMetadataDetails: UserMetadataDetails;
+  userMetadataDetails: CachedUserMetadataDetailsResponse;
   /** Get details that can be displayed to a user for a metadata group. */
-  userMetadataGroupDetails: UserMetadataGroupDetails;
+  userMetadataGroupDetails: CachedUserMetadataGroupDetailsResponse;
   /** Get paginated list of metadata groups. */
   userMetadataGroupsList: CachedSearchIdResponse;
   /** Get all the media items related to a user for a specific media type. */
@@ -2109,13 +2218,13 @@ export type QueryRoot = {
   /** Get paginated list of people. */
   userPeopleList: CachedSearchIdResponse;
   /** Get details that can be displayed to a user for a creator. */
-  userPersonDetails: UserPersonDetails;
+  userPersonDetails: CachedUserPersonDetailsResponse;
   /** Get upcoming calendar events for the given filter. */
   userUpcomingCalendarEvents: Array<GraphqlCalendarEvent>;
   /** Get details about a workout. */
-  userWorkoutDetails: UserWorkoutDetails;
+  userWorkoutDetails: CachedUserWorkoutDetailsResponse;
   /** Get information about a workout template. */
-  userWorkoutTemplateDetails: UserWorkoutTemplateDetails;
+  userWorkoutTemplateDetails: CachedUserWorkoutTemplateDetailsResponse;
   /** Get a paginated list of templates created by the user. */
   userWorkoutTemplatesList: CachedSearchIdResponse;
   /** Get a paginated list of workouts done by the user. */
@@ -2156,7 +2265,6 @@ export type QueryRootGetPresignedS3UrlArgs = {
 
 
 export type QueryRootMetadataDetailsArgs = {
-  ensureUpdated?: InputMaybe<Scalars['Boolean']['input']>;
   metadataId: Scalars['String']['input'];
 };
 
@@ -2217,7 +2325,7 @@ export type QueryRootUserExercisesListArgs = {
 
 
 export type QueryRootUserGenresListArgs = {
-  input: SearchInput;
+  input?: InputMaybe<SearchInput>;
 };
 
 
@@ -2518,21 +2626,33 @@ export type UniqueMediaIdentifier = {
 };
 
 export type UpdateCustomExerciseInput = {
-  attributes: ExerciseAttributesInput;
+  assets: EntityAssetsInput;
   equipment?: InputMaybe<ExerciseEquipment>;
   force?: InputMaybe<ExerciseForce>;
   id: Scalars['String']['input'];
+  instructions: Array<Scalars['String']['input']>;
   level: ExerciseLevel;
   lot: ExerciseLot;
   mechanic?: InputMaybe<ExerciseMechanic>;
   muscles: Array<ExerciseMuscle>;
   name: Scalars['String']['input'];
   shouldDelete?: InputMaybe<Scalars['Boolean']['input']>;
+  source: ExerciseSource;
+};
+
+export type UpdateCustomMetadataGroupInput = {
+  existingMetadataGroupId: Scalars['String']['input'];
+  update: CreateCustomMetadataGroupInput;
 };
 
 export type UpdateCustomMetadataInput = {
   existingMetadataId: Scalars['String']['input'];
   update: CreateCustomMetadataInput;
+};
+
+export type UpdateCustomPersonInput = {
+  existingPersonId: Scalars['String']['input'];
+  update: CreateCustomPersonInput;
 };
 
 export type UpdateSeenItemInput = {
@@ -2552,6 +2672,7 @@ export type UpdateUserExerciseSettings = {
 export type UpdateUserInput = {
   adminAccessToken?: InputMaybe<Scalars['String']['input']>;
   isDisabled?: InputMaybe<Scalars['Boolean']['input']>;
+  isOnboardingTourCompleted?: InputMaybe<Scalars['Boolean']['input']>;
   lot?: InputMaybe<UserLot>;
   userId: Scalars['String']['input'];
   username?: InputMaybe<Scalars['String']['input']>;
@@ -2642,12 +2763,13 @@ export type UserExerciseInput = {
 
 export type UserExercisesListInput = {
   filter?: InputMaybe<ExerciseListFilter>;
-  search: SearchInput;
+  search?: InputMaybe<SearchInput>;
   sortBy?: InputMaybe<ExerciseSortBy>;
 };
 
 export type UserExtraInformation = {
   __typename?: 'UserExtraInformation';
+  isOnboardingTourCompleted: Scalars['Boolean']['output'];
   scheduledForWorkoutRevision: Scalars['Boolean']['output'];
 };
 
@@ -2942,6 +3064,7 @@ export type UserMetadataGroupDetails = {
 
 export type UserMetadataGroupsListInput = {
   filter?: InputMaybe<MediaFilter>;
+  lot?: InputMaybe<MediaLot>;
   search?: InputMaybe<SearchInput>;
   sort?: InputMaybe<PersonSortInput>;
 };
@@ -3034,7 +3157,7 @@ export type UserStatisticsMeasurement = {
 };
 
 export type UserTemplatesOrWorkoutsListInput = {
-  search: SearchInput;
+  search?: InputMaybe<SearchInput>;
   sort?: InputMaybe<UserWorkoutsListSortInput>;
 };
 
@@ -3057,6 +3180,8 @@ export type UserToEntity = {
   collectionExtraInformation?: Maybe<UserToCollectionExtraInformation>;
   collectionId?: Maybe<Scalars['String']['output']>;
   createdOn: Scalars['DateTime']['output'];
+  entityId: Scalars['String']['output'];
+  entityLot: EntityLot;
   exerciseExtraInformation?: Maybe<UserToExerciseExtraInformation>;
   exerciseId?: Maybe<Scalars['String']['output']>;
   exerciseNumTimesInteracted?: Maybe<Scalars['Int']['output']>;

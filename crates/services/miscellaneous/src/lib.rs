@@ -5,7 +5,7 @@ use background_models::{ApplicationJob, HpApplicationJob};
 use common_models::{
     BackgroundJob, MetadataGroupSearchInput, PeopleSearchInput, SearchInput, StringIdObject,
 };
-use database_models::{metadata, prelude::User, user};
+use database_models::{prelude::User, user};
 use dependent_core_utils::core_details;
 use dependent_entity_list_utils::{
     user_genres_list, user_metadata_groups_list, user_metadata_list, user_people_list,
@@ -28,10 +28,9 @@ use dependent_notification_utils::{
 use dependent_review_utils::post_review;
 use enum_models::EntityLot;
 use media_models::{
-    CreateCustomMetadataInput, CreateOrUpdateReviewInput, CreateReviewCommentInput,
-    GenreDetailsInput, GraphqlCalendarEvent, GraphqlMetadataDetails, GroupedCalendarEvent,
-    MarkEntityAsPartialInput, MetadataLookupResponse, MetadataProgressUpdateInput,
-    ReviewPostedEvent, UpdateCustomMetadataInput, UpdateSeenItemInput, UserCalendarEventInput,
+    CreateOrUpdateReviewInput, CreateReviewCommentInput, GenreDetailsInput, GraphqlCalendarEvent,
+    GraphqlMetadataDetails, GroupedCalendarEvent, MarkEntityAsPartialInput, MetadataLookupResponse,
+    MetadataProgressUpdateInput, ReviewPostedEvent, UpdateSeenItemInput, UserCalendarEventInput,
     UserUpcomingCalendarEventInput,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, prelude::DateTimeUtc, prelude::Expr};
@@ -48,17 +47,15 @@ impl MiscellaneousService {
     pub async fn metadata_details(
         &self,
         metadata_id: &String,
-        ensure_updated: Option<bool>,
-    ) -> Result<GraphqlMetadataDetails> {
-        miscellaneous_entity_details_service::metadata_details(&self.0, metadata_id, ensure_updated)
-            .await
+    ) -> Result<CachedResponse<GraphqlMetadataDetails>> {
+        dependent_details_utils::metadata_details(&self.0, metadata_id).await
     }
 
     pub async fn user_metadata_details(
         &self,
         user_id: String,
         metadata_id: String,
-    ) -> Result<UserMetadataDetails> {
+    ) -> Result<CachedResponse<UserMetadataDetails>> {
         miscellaneous_entity_user_details_service::user_metadata_details(
             &self.0,
             user_id,
@@ -71,7 +68,7 @@ impl MiscellaneousService {
         &self,
         user_id: String,
         person_id: String,
-    ) -> Result<UserPersonDetails> {
+    ) -> Result<CachedResponse<UserPersonDetails>> {
         miscellaneous_entity_user_details_service::user_person_details(&self.0, user_id, person_id)
             .await
     }
@@ -80,7 +77,7 @@ impl MiscellaneousService {
         &self,
         user_id: String,
         metadata_group_id: String,
-    ) -> Result<UserMetadataGroupDetails> {
+    ) -> Result<CachedResponse<UserMetadataGroupDetails>> {
         miscellaneous_entity_user_details_service::user_metadata_group_details(
             &self.0,
             user_id,
@@ -253,28 +250,10 @@ impl MiscellaneousService {
         miscellaneous_progress_service::delete_seen_item(&self.0, user_id, seen_id).await
     }
 
-    pub async fn create_custom_metadata(
-        &self,
-        user_id: String,
-        input: CreateCustomMetadataInput,
-    ) -> Result<metadata::Model> {
-        miscellaneous_metadata_operations_service::create_custom_metadata(&self.0, user_id, input)
-            .await
-    }
-
-    pub async fn update_custom_metadata(
-        &self,
-        user_id: &str,
-        input: UpdateCustomMetadataInput,
-    ) -> Result<bool> {
-        miscellaneous_metadata_operations_service::update_custom_metadata(&self.0, user_id, input)
-            .await
-    }
-
     pub async fn user_genres_list(
         &self,
         user_id: String,
-        input: SearchInput,
+        input: Option<SearchInput>,
     ) -> Result<SearchResults<String>> {
         user_genres_list(&self.0, user_id, input).await
     }
@@ -295,24 +274,26 @@ impl MiscellaneousService {
         user_people_list(&user_id, input, &self.0).await
     }
 
-    pub async fn person_details(&self, person_id: String) -> Result<GraphqlPersonDetails> {
-        miscellaneous_entity_details_service::person_details(person_id, &self.0).await
+    pub async fn person_details(
+        &self,
+        person_id: String,
+    ) -> Result<CachedResponse<GraphqlPersonDetails>> {
+        dependent_details_utils::person_details(&person_id, &self.0).await
     }
 
     pub async fn genre_details(
         &self,
         user_id: String,
         input: GenreDetailsInput,
-    ) -> Result<GenreDetails> {
-        miscellaneous_entity_details_service::genre_details(&self.0, user_id, input).await
+    ) -> Result<CachedResponse<GenreDetails>> {
+        dependent_details_utils::genre_details(&self.0, user_id, input).await
     }
 
     pub async fn metadata_group_details(
         &self,
         metadata_group_id: String,
-    ) -> Result<MetadataGroupDetails> {
-        miscellaneous_entity_details_service::metadata_group_details(&self.0, metadata_group_id)
-            .await
+    ) -> Result<CachedResponse<MetadataGroupDetails>> {
+        dependent_details_utils::metadata_group_details(&self.0, &metadata_group_id).await
     }
 
     pub async fn create_review_comment(
@@ -371,6 +352,10 @@ impl MiscellaneousService {
 
     pub async fn invalidate_import_jobs(&self) -> Result<()> {
         miscellaneous_background_service::invalidate_import_jobs(&self.0).await
+    }
+
+    pub async fn cleanup_user_and_metadata_association(&self) -> Result<()> {
+        miscellaneous_background_service::cleanup_user_and_metadata_association(&self.0).await
     }
 
     pub async fn perform_background_jobs(&self) -> Result<()> {

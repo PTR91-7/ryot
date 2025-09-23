@@ -13,10 +13,11 @@ use apalis::{
 };
 use apalis_cron::{CronStream, Schedule};
 use common_utils::{PROJECT_NAME, get_temporary_directory, ryot_log};
+use config_definition::AppConfig;
 use dependent_models::CompleteExport;
 use env_utils::APP_VERSION;
 use logs_wheel::LogFileInitializer;
-use migrations::Migrator;
+use migrations_sql::Migrator;
 use schematic::schema::{SchemaGenerator, TypeScriptRenderer, YamlTemplateRenderer};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
@@ -123,7 +124,7 @@ async fn main() -> Result<()> {
             .join("includes");
 
         let mut generator = SchemaGenerator::default();
-        generator.add::<config_definition::AppConfig>();
+        generator.add::<AppConfig>();
         generator
             .generate(
                 base_dir.join("backend-config-schema.yaml"),

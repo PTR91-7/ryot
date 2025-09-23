@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use application_utils::get_base_http_client;
 use async_trait::async_trait;
 use common_models::{EntityAssets, NamedObject, PersonSourceSpecifics, SearchDetails};
@@ -18,7 +18,6 @@ use paginate::Pages;
 use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use strum::{Display, EnumIter, IntoEnumIterator};
 use traits::MediaProvider;
 
@@ -27,39 +26,39 @@ static AUDNEX_URL: &str = "https://api.audnex.us";
 #[derive(EnumIter, Display)]
 enum AudibleSimilarityType {
     InTheSameSeries,
-    ByTheSameNarrator,
     RawSimilarities,
     ByTheSameAuthor,
     NextInSameSeries,
+    ByTheSameNarrator,
 }
 
 #[derive(Serialize, Deserialize, Educe)]
 #[educe(Default)]
 struct PrimaryQuery {
+    #[educe(Default = "2400")]
+    image_sizes: String,
     #[educe(
         Default = "contributors,category_ladders,media,product_attrs,product_extended_attrs,series,relationships,rating"
     )]
     response_groups: String,
-    #[educe(Default = "2400")]
-    image_sizes: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct SearchQuery {
+    page: u64,
     title: String,
-    num_results: i32,
-    page: i32,
-    products_sort_by: String,
+    num_results: u64,
     #[serde(flatten)]
     primary: PrimaryQuery,
+    products_sort_by: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AudiblePoster {
-    #[serde(rename = "2400")]
-    image_2400: Option<String>,
     #[serde(rename = "500")]
     image_500: Option<String>,
+    #[serde(rename = "2400")]
+    image_2400: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,26 +85,26 @@ struct AudibleRatings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AudibleAuthor {
-    asin: Option<String>,
     name: String,
+    asin: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AudibleItem {
     asin: String,
     title: String,
+    release_date: Option<String>,
+    rating: Option<AudibleRatings>,
     is_adult_product: Option<bool>,
+    runtime_length_min: Option<i32>,
+    series: Option<Vec<AudibleItem>>,
+    publisher_summary: Option<String>,
     authors: Option<Vec<AudibleAuthor>>,
     narrators: Option<Vec<NamedObject>>,
-    rating: Option<AudibleRatings>,
     product_images: Option<AudiblePoster>,
     merchandising_summary: Option<String>,
-    publisher_summary: Option<String>,
-    release_date: Option<String>,
-    runtime_length_min: Option<i32>,
-    category_ladders: Option<Vec<AudibleCategoryLadderCollection>>,
-    series: Option<Vec<AudibleItem>>,
     relationships: Option<Vec<AudibleRelationshipItem>>,
+    category_ladders: Option<Vec<AudibleCategoryLadderCollection>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -136,16 +135,16 @@ pub struct AudibleService {
 impl AudibleService {
     fn url_from_locale(locale: &str) -> String {
         let suffix = match locale {
-            "us" => "com",
+            "es" => "es",
             "ca" => "ca",
-            "uk" => "co.uk",
-            "au" => "com.au",
             "fr" => "fr",
             "de" => "de",
-            "jp" => "co.jp",
+            "us" => "com",
             "it" => "it",
+            "jp" => "co.jp",
             "in" => "co.in",
-            "es" => "es",
+            "au" => "com.au",
+            "gb" | "uk" => "co.uk",
             _ => unreachable!(),
         };
         format!("https://api.audible.{suffix}/1.0/catalog/products")
@@ -160,29 +159,46 @@ impl AudibleService {
             locale: config.locale.clone(),
         })
     }
+
+    pub fn get_all_languages(&self) -> Vec<String> {
+        vec![
+            "au".to_string(),
+            "ca".to_string(),
+            "de".to_string(),
+            "es".to_string(),
+            "fr".to_string(),
+            "in".to_string(),
+            "it".to_string(),
+            "jp".to_string(),
+            "gb".to_string(),
+            "us".to_string(),
+        ]
+    }
+
+    pub fn get_default_language(&self) -> String {
+        "us".to_owned()
+    }
 }
 
 #[async_trait]
 impl MediaProvider for AudibleService {
     async fn people_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         _display_nsfw: bool,
         _source_specifics: &Option<PersonSourceSpecifics>,
     ) -> Result<SearchResults<PeopleSearchItem>> {
-        let internal_page: usize = page.unwrap_or(1).try_into().unwrap();
+        let internal_page: usize = page.try_into().unwrap();
         let req_internal_page = internal_page - 1;
-        let client = Client::new();
-        let data: Vec<AudibleAuthor> = client
+        let data: Vec<AudibleAuthor> = self
+            .client
             .get(format!("{AUDNEX_URL}/authors"))
-            .query(&json!({ "region": self.locale, "name": query }))
+            .query(&[("region", self.locale.as_str()), ("name", query)])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let data = data
             .into_iter()
             .map(|a| PeopleSearchItem {
@@ -210,21 +226,17 @@ impl MediaProvider for AudibleService {
         identity: &str,
         _source_specifics: &Option<PersonSourceSpecifics>,
     ) -> Result<PersonDetails> {
-        let client = Client::new();
-        let data: AudnexResponse = client
+        let data: AudnexResponse = self
+            .client
             .get(format!("{AUDNEX_URL}/authors/{identity}"))
-            .query(&json!({ "region": self.locale }))
+            .query(&[("region", self.locale.as_str())])
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let name = data.name;
         Ok(PersonDetails {
             name: name.clone(),
-            identifier: data.asin,
-            source: MediaSource::Audible,
             description: data.description,
             assets: EntityAssets {
                 remote_images: Vec::from_iter(data.image),
@@ -244,11 +256,9 @@ impl MediaProvider for AudibleService {
             .get(format!("{}/{}", self.url, identifier))
             .query(&PrimaryQuery::default())
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json()
-            .await
-            .map_err(|e| anyhow!(e))?;
+            .await?;
         let items = data
             .product
             .relationships
@@ -264,9 +274,8 @@ impl MediaProvider for AudibleService {
                 .get(format!("{}/{}", self.url, i))
                 .query(&PrimaryQuery::default())
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?;
-            let data: AudibleItemResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+                .await?;
+            let data: AudibleItemResponse = rsp.json().await?;
             collection_contents.push(PartialMetadataWithoutId {
                 identifier: i,
                 lot: MediaLot::AudioBook,
@@ -299,9 +308,8 @@ impl MediaProvider for AudibleService {
             .get(format!("{}/{}", self.url, identifier))
             .query(&PrimaryQuery::default())
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let data: AudibleItemResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let data: AudibleItemResponse = rsp.json().await?;
         let mut item = self.audible_response_to_search_response(data.product.clone());
         let mut suggestions = vec![];
         let mut groups = vec![];
@@ -309,8 +317,8 @@ impl MediaProvider for AudibleService {
             groups.push(CommitMetadataGroupInput {
                 name: s.title,
                 unique: UniqueMediaIdentifier {
-                    lot: item.lot,
                     identifier: s.asin,
+                    lot: MediaLot::AudioBook,
                     source: MediaSource::Audible,
                 },
                 ..Default::default()
@@ -320,16 +328,14 @@ impl MediaProvider for AudibleService {
             let data: AudibleItemSimResponse = self
                 .client
                 .get(format!("{}/{}/sims", self.url, identifier))
-                .query(&json!({
-                    "similarity_type": sim_type.to_string(),
-                    "response_groups": "media"
-                }))
+                .query(&[
+                    ("response_groups", "media"),
+                    ("similarity_type", sim_type.to_string().as_str()),
+                ])
                 .send()
-                .await
-                .map_err(|e| anyhow!(e))?
+                .await?
                 .json()
-                .await
-                .map_err(|e| anyhow!(e))?;
+                .await?;
             for sim in data.similar_products.into_iter() {
                 suggestions.push(PartialMetadataWithoutId {
                     title: sim.title,
@@ -348,15 +354,14 @@ impl MediaProvider for AudibleService {
 
     async fn metadata_search(
         &self,
+        page: u64,
         query: &str,
-        page: Option<i32>,
         _display_nsfw: bool,
         _source_specifics: &Option<MetadataSearchSourceSpecifics>,
     ) -> Result<SearchResults<MetadataSearchItem>> {
-        let page = page.unwrap_or(1);
         #[derive(Serialize, Deserialize, Debug)]
         struct AudibleSearchResponse {
-            total_results: i32,
+            total_results: u64,
             products: Vec<AudibleItem>,
         }
         let rsp = self
@@ -370,23 +375,22 @@ impl MediaProvider for AudibleService {
                 primary: PrimaryQuery::default(),
             })
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let search: AudibleSearchResponse = rsp.json().await.map_err(|e| anyhow!(e))?;
+            .await?;
+        let search: AudibleSearchResponse = rsp.json().await?;
         let resp = search
             .products
             .into_iter()
             .map(|d| {
-                let a = self.audible_response_to_search_response(d);
+                let a = self.audible_response_to_search_response(d.clone());
                 MetadataSearchItem {
                     title: a.title,
-                    identifier: a.identifier,
+                    identifier: d.asin,
                     publish_year: a.publish_year,
                     image: a.assets.remote_images.first().cloned(),
                 }
             })
             .collect_vec();
-        let next_page = (search.total_results - ((page) * PAGE_SIZE) > 0).then(|| page + 1);
+        let next_page = (search.total_results - (page * PAGE_SIZE) > 0).then(|| page + 1);
         Ok(SearchResults {
             items: resp,
             details: SearchDetails {
@@ -399,7 +403,7 @@ impl MediaProvider for AudibleService {
 
 impl AudibleService {
     fn audible_response_to_search_response(&self, item: AudibleItem) -> MetadataDetails {
-        let images = Vec::from_iter(item.product_images.unwrap().image_2400);
+        let images = Vec::from_iter(item.product_images.and_then(|i| i.image_2400));
         let release_date = item.release_date.unwrap_or_default();
         let people = item
             .authors
@@ -422,7 +426,6 @@ impl AudibleService {
             .map(|a| MetadataFreeCreator {
                 name: a.name,
                 role: "Narrator".to_owned(),
-                ..Default::default()
             })
             .collect_vec();
         let description = item.publisher_summary.or(item.merchandising_summary);
@@ -440,10 +443,7 @@ impl AudibleService {
             description,
             assets,
             provider_rating: rating,
-            lot: MediaLot::AudioBook,
             title: item.title.clone(),
-            source: MediaSource::Audible,
-            identifier: item.asin.clone(),
             is_nsfw: item.is_adult_product,
             source_url: Some(format!(
                 "https://www.audible.com/pd/{}/{}",

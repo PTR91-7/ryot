@@ -1,6 +1,6 @@
 use std::{result::Result as StdResult, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use application_utils::{get_base_http_client, get_podcast_episode_number_by_name};
 use common_utils::ryot_log;
 use data_encoding::BASE64;
@@ -20,7 +20,6 @@ use reqwest::{
     Client,
     header::{AUTHORIZATION, HeaderValue},
 };
-use serde_json::json;
 use supporting_service::SupportingService;
 
 use crate::{ImportFailStep, ImportFailedItem};
@@ -57,23 +56,21 @@ pub async fn import(
     let libraries_resp = client
         .get(format!("{url}/libraries"))
         .send()
-        .await
-        .map_err(|e| anyhow!(e))?
+        .await?
         .json::<audiobookshelf_models::LibrariesListResponse>()
         .await
         .unwrap();
     for library in libraries_resp.libraries {
         ryot_log!(debug, "Importing library {:?}", library.name.unwrap());
-        let mut query = json!({ "expanded": "1" });
+        let mut query = serde_json:: json!({ "expanded": "1" });
         if let Some(audiobookshelf_models::MediaType::Book) = library.media_type {
-            query["filter"] = json!(format!("progress.{}", BASE64.encode(b"finished")));
+            query["filter"] = serde_json::json!(format!("progress.{}", BASE64.encode(b"finished")));
         }
         let finished_items = client
             .get(format!("{}/libraries/{}/items", url, library.id))
             .query(&query)
             .send()
-            .await
-            .map_err(|e| anyhow!(e))?
+            .await?
             .json::<audiobookshelf_models::ListResponse>()
             .await
             .unwrap();
@@ -241,16 +238,15 @@ async fn get_item_details(
     id: &str,
     episode: Option<String>,
 ) -> Result<audiobookshelf_models::Item> {
-    let mut query = json!({ "expanded": "1", "include": "progress" });
+    let mut query = serde_json::json!({ "expanded": "1", "include": "progress" });
     if let Some(episode) = episode {
-        query["episode"] = json!(episode);
+        query["episode"] = serde_json::json!(episode);
     }
     let item = client
         .get(format!("{url}/items/{id}"))
         .query(&query)
         .send()
-        .await
-        .map_err(|e| anyhow!(e))?
+        .await?
         .json::<audiobookshelf_models::Item>()
         .await?;
     Ok(item)

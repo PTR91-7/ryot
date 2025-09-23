@@ -22,7 +22,7 @@ impl MiscellaneousSocialQueryResolver {
         &self,
         gql_ctx: &Context<'_>,
         person_id: String,
-    ) -> Result<GraphqlPersonDetails> {
+    ) -> Result<CachedResponse<GraphqlPersonDetails>> {
         let service = self.svc(gql_ctx);
         Ok(service.person_details(person_id).await?)
     }
@@ -32,7 +32,7 @@ impl MiscellaneousSocialQueryResolver {
         &self,
         gql_ctx: &Context<'_>,
         person_id: String,
-    ) -> Result<UserPersonDetails> {
+    ) -> Result<CachedResponse<UserPersonDetails>> {
         let (service, user_id) = self.svc_and_user(gql_ctx).await?;
         Ok(service.user_person_details(user_id, person_id).await?)
     }

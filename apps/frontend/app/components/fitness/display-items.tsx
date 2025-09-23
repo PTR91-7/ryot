@@ -6,12 +6,14 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { $path } from "safe-routes";
 import { dayjsLib } from "~/lib/shared/date-utils";
-import { useUserDetails } from "~/lib/shared/hooks";
+import {
+	useExerciseDetails,
+	useUserDetails,
+	useUserExerciseDetails,
+} from "~/lib/shared/hooks";
 import { getExerciseDetailsPath } from "~/lib/shared/media-utils";
 import {
-	getExerciseDetailsQuery,
 	getExerciseImages,
-	getUserExerciseDetailsQuery,
 	getWorkoutDetailsQuery,
 	getWorkoutTemplateDetailsQuery,
 } from "~/lib/state/fitness";
@@ -27,14 +29,11 @@ export const ExerciseDisplayItem = (props: {
 }) => {
 	const { ref, inViewport } = useInViewport();
 	const { data: exerciseDetails, isLoading: isExerciseDetailsLoading } =
-		useQuery({
-			...getExerciseDetailsQuery(props.exerciseId),
-			enabled: inViewport,
-		});
-	const { data: userExerciseDetails } = useQuery({
-		...getUserExerciseDetailsQuery(props.exerciseId),
-		enabled: inViewport,
-	});
+		useExerciseDetails(props.exerciseId, inViewport);
+	const { data: userExerciseDetails } = useUserExerciseDetails(
+		props.exerciseId,
+		inViewport,
+	);
 	const times = userExerciseDetails?.details?.exerciseNumTimesInteracted;
 	const images = getExerciseImages(exerciseDetails);
 
@@ -43,7 +42,7 @@ export const ExerciseDisplayItem = (props: {
 			innerRef={ref}
 			imageUrl={images.at(0)}
 			name={exerciseDetails?.name}
-			isLoading={isExerciseDetailsLoading}
+			isDetailsLoading={isExerciseDetailsLoading}
 			onImageClickBehavior={[getExerciseDetailsPath(props.exerciseId)]}
 			labels={{
 				left: isNumber(times)
@@ -71,7 +70,7 @@ export const WorkoutDisplayItem = (props: {
 		<BaseEntityDisplayItem
 			innerRef={ref}
 			name={workoutDetails?.details.name}
-			isLoading={isWorkoutDetailsLoading}
+			isDetailsLoading={isWorkoutDetailsLoading}
 			imageOverlay={{ topLeft: props.topLeft, topRight: props.topRight }}
 			onImageClickBehavior={[
 				$path("/fitness/:entity/:id", {
@@ -105,7 +104,7 @@ export const WorkoutTemplateDisplayItem = (props: {
 		<BaseEntityDisplayItem
 			innerRef={ref}
 			name={workoutTemplateDetails?.details.name}
-			isLoading={isWorkoutTemplateDetailsLoading}
+			isDetailsLoading={isWorkoutTemplateDetailsLoading}
 			imageOverlay={{ topLeft: props.topLeft, topRight: props.topRight }}
 			onImageClickBehavior={[
 				$path("/fitness/:entity/:id", {

@@ -13,7 +13,9 @@ use database_models::{
 };
 use database_utils::{entity_in_collections_with_details, get_enabled_users_query};
 use dependent_seen_utils::is_metadata_finished_by_user;
-use dependent_utility_utils::expire_user_metadata_list_cache;
+use dependent_utility_utils::{
+    expire_user_metadata_details_cache, expire_user_metadata_list_cache,
+};
 use enum_models::{EntityLot, UserToMediaReason};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait,
@@ -64,7 +66,7 @@ pub async fn cleanup_user_and_metadata_association(ss: &Arc<SupportingService>) 
             let mut new_reasons = HashSet::new();
             let (entity_id, entity_lot) = if let Some(metadata_id) = ute.metadata_id.clone() {
                 let (is_finished, seen_history) =
-                    is_metadata_finished_by_user(&ute.user_id, &metadata_id, &ss.db).await?;
+                    is_metadata_finished_by_user(&ute.user_id, &metadata_id, ss).await?;
                 if !seen_history.is_empty() {
                     new_reasons.insert(UserToMediaReason::Seen);
                 }
@@ -82,8 +84,7 @@ pub async fn cleanup_user_and_metadata_association(ss: &Arc<SupportingService>) 
             };
 
             let collections =
-                entity_in_collections_with_details(&ss.db, &user_id, &entity_id, entity_lot)
-                    .await?;
+                entity_in_collections_with_details(&user_id, &entity_id, entity_lot, ss).await?;
 
             let mut is_in_collection = false;
             let mut is_monitoring = false;
@@ -148,6 +149,7 @@ pub async fn cleanup_user_and_metadata_association(ss: &Arc<SupportingService>) 
                 ute.needs_to_be_updated = ActiveValue::Set(None);
                 ute.update(&ss.db).await?;
             }
+            expire_user_metadata_details_cache(&user_id, &entity_id, ss).await?;
         }
         expire_user_metadata_list_cache(&user_id, ss).await?;
     }

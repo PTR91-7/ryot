@@ -1,7 +1,9 @@
 use async_graphql::{Enum, InputObject, OneofObject, SimpleObject};
 use chrono::NaiveDate;
-use common_models::ApplicationDateRange;
-use enum_models::{EntityLot, MediaLot, SeenState, UserNotificationContent, Visibility};
+use common_models::{ApplicationDateRange, SearchInput};
+use enum_models::{
+    EntityLot, MediaLot, MediaSource, SeenState, UserNotificationContent, Visibility,
+};
 use rust_decimal::Decimal;
 use sea_orm::{prelude::DateTimeUtc, strum::Display};
 use serde::{Deserialize, Serialize};
@@ -35,6 +37,7 @@ pub struct MetadataProgressUpdateCommonInput {
     pub show_episode_number: Option<i32>,
     pub manga_volume_number: Option<i32>,
     pub anime_episode_number: Option<i32>,
+    pub manual_time_spent: Option<Decimal>,
     pub podcast_episode_number: Option<i32>,
     pub manga_chapter_number: Option<Decimal>,
     pub providers_consumed_on: Option<Vec<String>>,
@@ -55,12 +58,6 @@ pub struct MetadataProgressUpdateStartedAndFinishedOnDateInput {
 }
 
 #[derive(OneofObject, Debug, Deserialize, Serialize, Display, Clone)]
-pub enum MetadataProgressUpdateChangeLatestInProgressInput {
-    State(SeenState),
-    Progress(Decimal),
-}
-
-#[derive(OneofObject, Debug, Deserialize, Serialize, Display, Clone)]
 pub enum MetadataProgressUpdateChangeCreateNewCompletedInput {
     WithoutDates(MetadataProgressUpdateCommonInput),
     StartedOnDate(MetadataProgressUpdateStartedOrFinishedOnDateInput),
@@ -77,9 +74,10 @@ pub struct MetadataProgressUpdateNewInProgressInput {
 
 #[derive(OneofObject, Debug, Deserialize, Serialize, Display, Clone)]
 pub enum MetadataProgressUpdateChange {
+    ChangeLatestState(SeenState),
+    ChangeLatestInProgress(Decimal),
     CreateNewInProgress(MetadataProgressUpdateNewInProgressInput),
     CreateNewCompleted(MetadataProgressUpdateChangeCreateNewCompletedInput),
-    ChangeLatestInProgress(MetadataProgressUpdateChangeLatestInProgressInput),
 }
 
 #[derive(InputObject, Debug, Deserialize, Serialize, Clone)]
@@ -94,10 +92,11 @@ pub struct MetadataProgressUpdateCacheInput {
     pub common: MetadataProgressUpdateCommonInput,
 }
 
-#[derive(Debug, InputObject)]
+#[skip_serializing_none]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize, PartialEq, Eq, InputObject)]
 pub struct GenreDetailsInput {
     pub genre_id: String,
-    pub page: Option<u64>,
+    pub search: Option<SearchInput>,
 }
 
 #[derive(Debug, Serialize, Hash, Deserialize, Enum, Clone, PartialEq, Eq, Copy, Default)]
@@ -140,6 +139,13 @@ pub enum MediaGeneralFilter {
 }
 
 #[derive(Debug, Hash, Serialize, Deserialize, Enum, Clone, Copy, Eq, PartialEq, Default)]
+pub enum MediaCollectionStrategyFilter {
+    Or,
+    #[default]
+    And,
+}
+
+#[derive(Debug, Hash, Serialize, Deserialize, Enum, Clone, Copy, Eq, PartialEq, Default)]
 pub enum MediaCollectionPresenceFilter {
     #[default]
     PresentIn,
@@ -149,30 +155,33 @@ pub enum MediaCollectionPresenceFilter {
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, InputObject, Clone, Default)]
 pub struct MediaCollectionFilter {
     pub collection_id: String,
+    pub strategy: MediaCollectionStrategyFilter,
     pub presence: MediaCollectionPresenceFilter,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Serialize, Deserialize, InputObject, Clone, Default)]
 pub struct MediaFilter {
+    pub source: Option<MediaSource>,
     pub general: Option<MediaGeneralFilter>,
     pub date_range: Option<ApplicationDateRange>,
     pub collections: Option<Vec<MediaCollectionFilter>>,
 }
 
-#[derive(SimpleObject, Debug)]
+#[derive(Clone, SimpleObject, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserMetadataDetailsEpisodeProgress {
     pub times_seen: usize,
     pub episode_number: i32,
 }
 
-#[derive(SimpleObject, Debug)]
+#[derive(Clone, SimpleObject, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserMetadataDetailsShowSeasonProgress {
     pub times_seen: usize,
     pub season_number: i32,
     pub episodes: Vec<UserMetadataDetailsEpisodeProgress>,
 }
 
-#[derive(SimpleObject, Debug, Clone, Default)]
+#[skip_serializing_none]
+#[derive(Clone, SimpleObject, Default, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub struct UserMediaNextEntry {
     pub season: Option<i32>,
     pub volume: Option<i32>,
