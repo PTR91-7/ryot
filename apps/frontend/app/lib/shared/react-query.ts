@@ -5,6 +5,7 @@ import {
 import {
 	type CollectionContentsInput,
 	type CollectionRecommendationsInput,
+	type EntityLot,
 	type GenreDetailsInput,
 	MetadataGroupDetailsDocument,
 	type MetadataGroupSearchInput,
@@ -14,6 +15,7 @@ import {
 	type SearchInput,
 	type UserAnalyticsInput,
 	type UserCalendarEventInput,
+	UserEntityRecentlyConsumedDocument,
 	type UserExercisesListInput,
 	type UserMeasurementsListInput,
 	UserMetadataDetailsDocument,
@@ -106,6 +108,9 @@ const mediaQueryKeys = createQueryKeys("media", {
 	userMetadataGroupsList: (input: UserMetadataGroupsListInput) => ({
 		queryKey: ["userMetadataGroupsList", input],
 	}),
+	userEntityRecentlyConsumed: (entityId?: string) => ({
+		queryKey: ["userEntityRecentlyConsumed", entityId],
+	}),
 });
 
 const collectionQueryKeys = createQueryKeys("collections", {
@@ -154,11 +159,11 @@ const miscellaneousQueryKeys = createQueryKeys("miscellaneous", {
 	userDetails: (userId?: string) => ({
 		queryKey: ["userDetails", userId],
 	}),
-	presignedS3Url: (key: string) => ({
-		queryKey: ["presignedS3Url", key],
-	}),
 	userAnalytics: (input: UserAnalyticsInput) => ({
 		queryKey: ["userAnalytics", input],
+	}),
+	presignedS3Urls: (key: string[] | undefined) => ({
+		queryKey: ["presignedS3Urls", key],
 	}),
 });
 
@@ -232,6 +237,24 @@ export const getUserMetadataGroupDetailsQuery = (metadataGroupId?: string) =>
 			: skipToken,
 	});
 
+export const getUserEntityRecentlyConsumedQuery = (
+	entityId?: string,
+	entityLot?: EntityLot,
+) =>
+	queryOptions({
+		queryKey: queryFactory.media.userEntityRecentlyConsumed(entityId).queryKey,
+		queryFn:
+			entityId && entityLot
+				? () =>
+						clientGqlService
+							.request(UserEntityRecentlyConsumedDocument, {
+								entityId,
+								entityLot,
+							})
+							.then((data) => data.userEntityRecentlyConsumed)
+				: skipToken,
+	});
+
 export const refreshEntityDetails = (entityId: string) =>
 	setTimeout(async () => {
 		await Promise.all(
@@ -243,6 +266,7 @@ export const refreshEntityDetails = (entityId: string) =>
 				queryFactory.media.userMetadataDetails(entityId).queryKey,
 				queryFactory.media.metadataGroupDetails(entityId).queryKey,
 				queryFactory.media.userMetadataGroupDetails(entityId).queryKey,
+				queryFactory.media.userEntityRecentlyConsumed(entityId).queryKey,
 				queryFactory.fitness.workoutTemplateDetails(entityId).queryKey,
 				queryFactory.media.userGenresList._def,
 				queryFactory.media.userPeopleList._def,

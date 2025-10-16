@@ -14,17 +14,15 @@ import {
 	Text,
 	Title,
 } from "@mantine/core";
-import {
-	type EntityAssets,
-	GridPacking,
-	type MediaLot,
-	type MediaSource,
+import type {
+	EntityAssets,
+	MediaLot,
+	MediaSource,
 } from "@ryot/generated/graphql/backend/graphql";
 import { changeCase } from "@ryot/ts-utils";
 import { IconExternalLink } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
-import { match } from "ts-pattern";
-import { useFallbackImageUrl, useUserPreferences } from "~/lib/shared/hooks";
+import { useFallbackImageUrl, useS3PresignedUrls } from "~/lib/shared/hooks";
 import {
 	getProviderSourceImage,
 	getSurroundingElements,
@@ -34,20 +32,16 @@ import classes from "~/styles/common.module.css";
 
 export const ApplicationGrid = (props: {
 	className?: string;
-	children: ReactNode | Array<ReactNode>;
+	children: ReactNode;
 }) => {
-	const userPreferences = useUserPreferences();
 	const [parent] = useAutoAnimate();
 
 	return (
 		<SimpleGrid
-			spacing="lg"
 			ref={parent}
+			spacing="sm"
 			className={props.className}
-			cols={match(userPreferences.general.gridPacking)
-				.with(GridPacking.Normal, () => ({ base: 2, sm: 3, md: 4, lg: 5 }))
-				.with(GridPacking.Dense, () => ({ base: 3, sm: 4, md: 5, lg: 6 }))
-				.exhaustive()}
+			cols={{ base: 2, sm: 3, md: 5 }}
 		>
 			{props.children}
 		</SimpleGrid>
@@ -56,9 +50,9 @@ export const ApplicationGrid = (props: {
 
 export const MediaDetailsLayout = (props: {
 	title: string;
+	children: ReactNode;
 	assets: EntityAssets;
 	isPartialStatusActive: boolean;
-	children: Array<ReactNode | (ReactNode | undefined)>;
 	externalLink: {
 		lot?: MediaLot;
 		source: MediaSource;
@@ -68,7 +62,11 @@ export const MediaDetailsLayout = (props: {
 	const [activeImageId, setActiveImageId] = useState(0);
 	const fallbackImageUrl = useFallbackImageUrl();
 
-	const images = [...props.assets.remoteImages, ...props.assets.s3Images];
+	const s3PresignedUrls = useS3PresignedUrls(props.assets.s3Images);
+	const images = [
+		...props.assets.remoteImages,
+		...(s3PresignedUrls.data || []),
+	];
 
 	const providerImage = getProviderSourceImage(props.externalLink.source);
 

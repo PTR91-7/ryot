@@ -3,9 +3,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow, bail};
 use background_models::{ApplicationJob, HpApplicationJob, LpApplicationJob};
 use chrono::Utc;
-use common_models::{
-    BackendError, EntityAssets, SearchInput, StringIdAndNamedObject, UserLevelCacheKey,
-};
+use common_models::{BackendError, SearchInput, StringIdAndNamedObject, UserLevelCacheKey};
 use common_utils::ryot_log;
 use database_models::{
     access_link, collection, collection_entity_membership,
@@ -24,7 +22,6 @@ use markdown::to_html as markdown_to_html;
 use media_models::{
     MediaCollectionFilter, MediaCollectionPresenceFilter, MediaCollectionStrategyFilter, ReviewItem,
 };
-use rust_decimal_macros::dec;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, Condition, EntityTrait, IntoActiveModel,
     QueryFilter, QueryOrder, QuerySelect, Select,
@@ -32,7 +29,6 @@ use sea_orm::{
     sea_query::{PgFunc, SimpleExpr, extension::postgres::PgExpr},
 };
 use supporting_service::SupportingService;
-use user_models::UserReviewScale;
 use uuid::Uuid;
 
 pub async fn revoke_access_link(
@@ -174,23 +170,13 @@ pub async fn user_workout_details(
                 .filter(workout::Column::UserId.eq(user_id))
                 .one(&ss.db)
                 .await?;
-            let Some(mut e) = maybe_workout else {
+            let Some(workout) = maybe_workout else {
                 bail!("Workout with the given ID could not be found for this user.");
             };
             let collections =
                 entity_in_collections_with_details(user_id, &workout_id, EntityLot::Workout, ss)
                     .await?;
-            let details = {
-                if let Some(ref mut assets) = e.information.assets {
-                    transform_entity_assets(assets, ss).await?;
-                }
-                for exercise in e.information.exercises.iter_mut() {
-                    if let Some(ref mut assets) = exercise.assets {
-                        transform_entity_assets(assets, ss).await?;
-                    }
-                }
-                e
-            };
+            let details = workout;
             let metadata_consumed = Seen::find()
                 .select_only()
                 .column(seen::Column::MetadataId)
@@ -379,23 +365,8 @@ pub async fn item_reviews(
         .all(&ss.db)
         .await?;
     let mut reviews = vec![];
-    let preferences = user_by_id(user_id, ss).await?.preferences;
     for (review, user) in all_reviews {
         let user = user.unwrap();
-        let rating = match true {
-            true => review.rating.map(|s| {
-                s.checked_div(match preferences.general.review_scale {
-                    UserReviewScale::OutOfTen => dec!(10),
-                    UserReviewScale::OutOfFive => dec!(20),
-                    UserReviewScale::OutOfHundred | UserReviewScale::ThreePointSmiley => {
-                        dec!(1)
-                    }
-                })
-                .unwrap()
-                .round_dp(1)
-            }),
-            false => review.rating,
-        };
         let seen_items_associated_with = Seen::find()
             .select_only()
             .column(seen::Column::Id)
@@ -404,23 +375,23 @@ pub async fn item_reviews(
             .all(&ss.db)
             .await?;
         let to_push = ReviewItem {
-            rating,
             id: review.id,
+            rating: review.rating,
+            comments: review.comments,
             seen_items_associated_with,
             posted_on: review.posted_on,
-            is_spoiler: review.is_spoiler,
             visibility: review.visibility,
+            is_spoiler: review.is_spoiler,
             text_original: review.text.clone(),
-            text_rendered: review.text.map(|t| markdown_to_html(&t)),
             show_extra_information: review.show_extra_information,
-            podcast_extra_information: review.podcast_extra_information,
             anime_extra_information: review.anime_extra_information,
             manga_extra_information: review.manga_extra_information,
+            text_rendered: review.text.map(|t| markdown_to_html(&t)),
+            podcast_extra_information: review.podcast_extra_information,
             posted_by: StringIdAndNamedObject {
                 id: user.id,
                 name: user.name,
             },
-            comments: review.comments,
         };
         reviews.push(to_push);
     }
@@ -472,17 +443,4 @@ pub fn get_enabled_users_query() -> Select<User> {
             .eq(false)
             .or(user::Column::IsDisabled.is_null()),
     )
-}
-
-pub async fn transform_entity_assets(
-    assets: &mut EntityAssets,
-    ss: &Arc<SupportingService>,
-) -> Result<()> {
-    for image in assets.s3_images.iter_mut() {
-        *image = file_storage_service::get_presigned_url(ss, image.clone()).await?;
-    }
-    for video in assets.s3_videos.iter_mut() {
-        *video = file_storage_service::get_presigned_url(ss, video.clone()).await?;
-    }
-    Ok(())
 }

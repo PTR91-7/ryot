@@ -7,6 +7,7 @@ import {
 	type SetRestTimersSettings,
 	UserExerciseDetailsDocument,
 	type UserFitnessPreferences,
+	type UserMeasurement,
 	type UserUnitSystem,
 	UserWorkoutDetailsDocument,
 	type UserWorkoutDetailsQuery,
@@ -27,6 +28,7 @@ import { match } from "ts-pattern";
 import { v4 as randomUUID } from "uuid";
 import { CURRENT_WORKOUT_KEY } from "~/lib/shared/constants";
 import { dayjsLib, getTimeOfDay } from "~/lib/shared/date-utils";
+import { useS3PresignedUrls } from "~/lib/shared/hooks";
 import {
 	clientGqlService,
 	queryClient,
@@ -35,8 +37,8 @@ import {
 import { FitnessAction } from "~/lib/types";
 
 export type WorkoutDuration = {
-	from: string;
 	to?: string;
+	from: string;
 };
 
 export type ExerciseSet = {
@@ -119,8 +121,8 @@ export const getDefaultWorkout = (fitnessEntity: FitnessAction) => {
 		supersets: [],
 		exercises: [],
 		timerDrawerLot: "timer",
-		startTime: date.toISOString(),
 		currentAction: fitnessEntity,
+		startTime: date.toISOString(),
 		durations: [{ from: date.toISOString() }],
 		name: `${getTimeOfDay(date.hour())} Workout`,
 	} as InProgressWorkout;
@@ -302,10 +304,9 @@ const currentWorkoutStopwatchAtom = atomWithStorage<CurrentWorkoutStopwatch>(
 export const useCurrentWorkoutStopwatchAtom = () =>
 	useAtom(currentWorkoutStopwatchAtom);
 
-const measurementsDrawerOpenAtom = atom(false);
+const measurementsDrawerAtom = atom<false | UserMeasurement | null>(false);
 
-export const useMeasurementsDrawerOpen = () =>
-	useAtom(measurementsDrawerOpenAtom);
+export const useMeasurementsDrawer = () => useAtom(measurementsDrawerAtom);
 
 export const mergingExerciseAtom = atom<string | null>(null);
 
@@ -432,11 +433,12 @@ export const addExerciseToCurrentWorkout = async (
 	navigate($path("/fitness/:action", { action: currentWorkout.currentAction }));
 };
 
-export const getExerciseImages = (
+export const useExerciseImages = (
 	exercise?: ExerciseDetailsQuery["exerciseDetails"],
 ) => {
+	const s3PresignedUrls = useS3PresignedUrls(exercise?.assets.s3Images);
 	return [
-		...(exercise?.assets.s3Images || []),
+		...(s3PresignedUrls.data || []),
 		...(exercise?.assets.remoteImages || []),
 	];
 };

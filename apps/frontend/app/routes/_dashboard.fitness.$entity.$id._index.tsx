@@ -48,7 +48,6 @@ import {
 	IconWeight,
 	IconZzz,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { Form, Link, data, useLoaderData } from "react-router";
 import { $path } from "safe-routes";
@@ -73,16 +72,16 @@ import {
 	useConfirmSubmit,
 	useCoreDetails,
 	useGetWorkoutStarter,
+	useInvalidateUserDetails,
 	useMetadataDetails,
+	useS3PresignedUrls,
 	useUserPreferences,
 	useUserUnitSystem,
+	useUserWorkoutDetails,
+	useUserWorkoutTemplateDetails,
 } from "~/lib/shared/hooks";
 import { openConfirmationModal } from "~/lib/shared/ui-utils";
-import {
-	duplicateOldWorkout,
-	getWorkoutDetailsQuery,
-	getWorkoutTemplateDetailsQuery,
-} from "~/lib/state/fitness";
+import { duplicateOldWorkout } from "~/lib/state/fitness";
 import { useFullscreenImage } from "~/lib/state/general";
 import { useAddEntityToCollections } from "~/lib/state/media";
 import { FitnessAction, FitnessEntity } from "~/lib/types";
@@ -190,6 +189,7 @@ export default function Page() {
 	const coreDetails = useCoreDetails();
 	const unitSystem = useUserUnitSystem();
 	const userPreferences = useUserPreferences();
+	const invalidateUserDetails = useInvalidateUserDetails();
 	const { entityId, entity } = useLoaderData<typeof loader>();
 	const [
 		adjustTimeModalOpened,
@@ -203,29 +203,34 @@ export default function Page() {
 	const startWorkout = useGetWorkoutStarter();
 	const [_a, setAddEntityToCollectionsData] = useAddEntityToCollections();
 
-	const { data: workoutData } = useQuery({
-		...getWorkoutDetailsQuery(entityId),
-		enabled: entity === FitnessEntity.Workouts,
-	});
+	const { data: workoutData } = useUserWorkoutDetails(
+		entityId,
+		entity === FitnessEntity.Workouts,
+	);
 
-	const { data: templateData } = useQuery({
-		...getWorkoutTemplateDetailsQuery(entityId),
-		enabled: entity === FitnessEntity.Templates,
-	});
+	const { data: templateData } = useUserWorkoutTemplateDetails(
+		entityId,
+		entity === FitnessEntity.Templates,
+	);
 
-	const { data: repeatedWorkoutData } = useQuery({
-		...getWorkoutDetailsQuery(workoutData?.details.repeatedFrom || ""),
-		enabled: !!(
-			workoutData?.details.repeatedFrom && entity === FitnessEntity.Workouts
-		),
-	});
+	const { data: repeatedWorkoutData } = useUserWorkoutDetails(
+		workoutData?.details.repeatedFrom,
+		!!(workoutData?.details.repeatedFrom && entity === FitnessEntity.Workouts),
+	);
 
-	const { data: templateDetailsData } = useQuery({
-		...getWorkoutTemplateDetailsQuery(workoutData?.details.templateId || ""),
-		enabled: !!(
-			workoutData?.details.templateId && entity === FitnessEntity.Workouts
-		),
-	});
+	const { data: templateDetailsData } = useUserWorkoutTemplateDetails(
+		workoutData?.details.templateId || "",
+		!!(workoutData?.details.templateId && entity === FitnessEntity.Workouts),
+	);
+
+	const currentData =
+		entity === FitnessEntity.Workouts ? workoutData : templateData;
+	const s3ImagesPresigned = useS3PresignedUrls(
+		currentData?.details.information.assets?.s3Images,
+	);
+	const s3VideosPresigned = useS3PresignedUrls(
+		currentData?.details.information.assets?.s3Videos,
+	);
 
 	const loaderData = useMemo(() => {
 		const baseData = match(entity)
@@ -287,8 +292,11 @@ export default function Page() {
 
 		if (!baseData) return null;
 
-		const images = baseData.information.assets?.s3Images || [];
-		const videos = baseData.information.assets?.s3Videos || [];
+		const remoteImages = baseData.information.assets?.remoteImages || [];
+		const remoteVideoUrls =
+			baseData.information.assets?.remoteVideos.map((v) => v.url) || [];
+		const images = [...remoteImages, ...(s3ImagesPresigned.data || [])];
+		const videos = [...remoteVideoUrls, ...(s3VideosPresigned.data || [])];
 		const hasAssets = images.length > 0 || videos.length > 0;
 
 		return { ...baseData, images, videos, hasAssets };
@@ -299,6 +307,8 @@ export default function Page() {
 		templateData,
 		repeatedWorkoutData,
 		templateDetailsData,
+		s3ImagesPresigned.data,
+		s3VideosPresigned.data,
 	]);
 
 	if (!loaderData)
@@ -344,8 +354,11 @@ export default function Page() {
 					<Form
 						replace
 						method="POST"
-						onSubmit={() => adjustTimeModalClose()}
 						action={withQuery(".", { intent: "edit" })}
+						onSubmit={() => {
+							adjustTimeModalClose();
+							invalidateUserDetails();
+						}}
 					>
 						<Stack>
 							<Title order={3}>Adjust times</Title>
@@ -689,9 +702,10 @@ const ConsumedMetadataDisplay = (props: {
 		props.enabled,
 	);
 
+	const s3PresignedUrls = useS3PresignedUrls(metadataDetails?.assets.s3Images);
 	const images = [
 		...(metadataDetails?.assets.remoteImages || []),
-		...(metadataDetails?.assets.s3Images || []),
+		...(s3PresignedUrls.data || []),
 	];
 
 	return (

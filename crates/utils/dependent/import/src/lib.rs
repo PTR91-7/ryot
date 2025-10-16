@@ -7,7 +7,7 @@ use database_utils::{schedule_user_for_workout_revision, user_by_id};
 use dependent_collection_utils::{add_entities_to_collection, create_or_update_collection};
 use dependent_entity_utils::{commit_metadata, commit_metadata_group, commit_person};
 use dependent_fitness_utils::{
-    create_custom_exercise, create_or_update_user_workout, create_user_measurement,
+    create_custom_exercise, create_or_update_user_measurement, create_or_update_user_workout,
     db_workout_to_workout_input,
 };
 use dependent_jobs_utils::{deploy_update_metadata_group_job, deploy_update_person_job};
@@ -203,6 +203,7 @@ where
                     if let Err(e) =
                         commit_import_seen_item(is_import, user_id, &db_metadata_id, ss, seen).await
                     {
+                        ryot_log!(debug, "Failed to commit seen item: {}", e);
                         import.failed.push(ImportFailedItem {
                             lot: Some(metadata.lot),
                             error: Some(e.to_string()),
@@ -217,16 +218,15 @@ where
                         &preferences,
                         db_metadata_id.clone(),
                         EntityLot::Metadata,
-                    ) {
-                        if let Err(e) = post_review(user_id, input, ss).await {
-                            import.failed.push(ImportFailedItem {
-                                lot: Some(metadata.lot),
-                                error: Some(e.to_string()),
-                                step: ImportFailStep::DatabaseCommit,
-                                identifier: metadata.source_id.to_owned(),
-                            });
-                        };
-                    }
+                    ) && let Err(e) = post_review(user_id, input, ss).await
+                    {
+                        import.failed.push(ImportFailedItem {
+                            lot: Some(metadata.lot),
+                            error: Some(e.to_string()),
+                            step: ImportFailStep::DatabaseCommit,
+                            identifier: metadata.source_id.to_owned(),
+                        });
+                    };
                 }
                 for col in metadata.collections.into_iter() {
                     create_collection_and_add_entity_to_it(
@@ -274,16 +274,15 @@ where
                         &preferences,
                         db_metadata_group_id.clone(),
                         EntityLot::MetadataGroup,
-                    ) {
-                        if let Err(e) = post_review(user_id, input, ss).await {
-                            import.failed.push(ImportFailedItem {
-                                error: Some(e.to_string()),
-                                lot: Some(metadata_group.lot),
-                                step: ImportFailStep::DatabaseCommit,
-                                identifier: metadata_group.title.to_owned(),
-                            });
-                        };
-                    }
+                    ) && let Err(e) = post_review(user_id, input, ss).await
+                    {
+                        import.failed.push(ImportFailedItem {
+                            error: Some(e.to_string()),
+                            lot: Some(metadata_group.lot),
+                            step: ImportFailStep::DatabaseCommit,
+                            identifier: metadata_group.title.to_owned(),
+                        });
+                    };
                 }
                 for col in metadata_group.collections.into_iter() {
                     create_collection_and_add_entity_to_it(
@@ -329,16 +328,15 @@ where
                         &preferences,
                         db_person_id.clone(),
                         EntityLot::Person,
-                    ) {
-                        if let Err(e) = post_review(user_id, input, ss).await {
-                            import.failed.push(ImportFailedItem {
-                                error: Some(e.to_string()),
-                                identifier: person.name.to_owned(),
-                                step: ImportFailStep::DatabaseCommit,
-                                ..Default::default()
-                            });
-                        };
-                    }
+                    ) && let Err(e) = post_review(user_id, input, ss).await
+                    {
+                        import.failed.push(ImportFailedItem {
+                            error: Some(e.to_string()),
+                            identifier: person.name.to_owned(),
+                            step: ImportFailStep::DatabaseCommit,
+                            ..Default::default()
+                        });
+                    };
                 }
                 for col in person.collections.into_iter() {
                     create_collection_and_add_entity_to_it(
@@ -415,7 +413,9 @@ where
                 }
             }
             ImportCompletedItem::Measurement(measurement) => {
-                if let Err(err) = create_user_measurement(user_id, measurement.clone(), ss).await {
+                if let Err(err) =
+                    create_or_update_user_measurement(user_id, measurement.clone(), ss).await
+                {
                     import.failed.push(ImportFailedItem {
                         error: Some(err.to_string()),
                         step: ImportFailStep::DatabaseCommit,

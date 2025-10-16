@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use common_models::{
     EntityAssets, EntityRemoteVideo, EntityRemoteVideoSource, PersonSourceSpecifics,
 };
+use common_utils::compute_next_page;
 use convert_case::{Case, Casing};
 use enum_models::{MediaLot, MediaSource};
 use itertools::Itertools;
@@ -313,20 +314,6 @@ pub enum MediaType {
     Anime,
     #[serde(rename = "MANGA")]
     Manga,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MediaStatus {
-    #[serde(rename = "FINISHED")]
-    Finished,
-    #[serde(rename = "RELEASING")]
-    Releasing,
-    #[serde(rename = "NOT_YET_RELEASED")]
-    NotYetReleased,
-    #[serde(rename = "CANCELLED")]
-    Cancelled,
-    #[serde(rename = "HIATUS")]
-    Hiatus,
 }
 
 pub fn media_status_string(status: Option<String>) -> Option<String> {
@@ -678,7 +665,7 @@ pub async fn search(
         .page
         .unwrap();
     let total = search.page_info.unwrap().total.unwrap();
-    let next_page = (total - (page * page_size) > 0).then(|| page + 1);
+    let next_page = compute_next_page(page, page_size, total);
     let media = search
         .media
         .unwrap()

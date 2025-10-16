@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow, bail};
 use common_models::{ChangeCollectionToEntitiesInput, DefaultCollection, EntityToCollectionInput};
 use common_utils::ryot_log;
 use database_models::{exercise, prelude::*, user_measurement, user_to_entity, workout};
-use database_utils::{schedule_user_for_workout_revision, user_by_id};
+use database_utils::schedule_user_for_workout_revision;
 use dependent_collection_utils::add_entities_to_collection;
 use dependent_models::UpdateCustomExerciseInput;
 use dependent_notification_utils::send_notification_for_user;
@@ -35,44 +35,23 @@ use sea_orm::{
     QueryFilter, prelude::DateTimeUtc,
 };
 use supporting_service::SupportingService;
-use user_models::UserStatisticsMeasurement;
 
-pub async fn create_user_measurement(
+pub async fn create_or_update_user_measurement(
     user_id: &String,
     mut input: user_measurement::Model,
     ss: &Arc<SupportingService>,
 ) -> Result<DateTimeUtc> {
+    let existing = UserMeasurement::find()
+        .filter(user_measurement::Column::UserId.eq(user_id))
+        .filter(user_measurement::Column::Timestamp.eq(input.timestamp))
+        .one(&ss.db)
+        .await?;
+
+    if let Some(existing_measurement) = existing {
+        existing_measurement.delete(&ss.db).await?;
+    }
+
     input.user_id = user_id.to_owned();
-
-    let mut user = user_by_id(user_id, ss).await?;
-
-    let mut needs_to_update_preferences = false;
-    for measurement in input.information.statistics.iter() {
-        let already_in_preferences = user
-            .preferences
-            .fitness
-            .measurements
-            .statistics
-            .iter()
-            .any(|stat| stat.name == measurement.name);
-        if !already_in_preferences {
-            user.preferences
-                .fitness
-                .measurements
-                .statistics
-                .push(UserStatisticsMeasurement {
-                    name: measurement.name.clone(),
-                    ..Default::default()
-                });
-            needs_to_update_preferences = true;
-        }
-    }
-
-    if needs_to_update_preferences {
-        let mut user_model = user.clone().into_active_model();
-        user_model.preferences = ActiveValue::Set(user.preferences);
-        user_model.update(&ss.db).await?;
-    }
 
     let um = input.into_active_model();
     let um = um.insert(&ss.db).await?;
@@ -692,23 +671,38 @@ pub async fn update_custom_exercise(
     user_id: String,
     input: UpdateCustomExerciseInput,
 ) -> Result<bool> {
-    let id = input.update.id.clone();
-    let mut update = input.update.clone();
+    let UpdateCustomExerciseInput {
+        mut update,
+        should_delete,
+    } = input;
+    let id = update.id.clone();
+    let delete_entity = should_delete.unwrap_or_default();
     let old_exercise = Exercise::find_by_id(&id).one(&ss.db).await?.unwrap();
-    for image in old_exercise.assets.s3_images.clone() {
+    let (images_to_delete, videos_to_delete) = if delete_entity {
+        (
+            old_exercise.assets.s3_images.clone(),
+            old_exercise.assets.s3_videos.clone(),
+        )
+    } else {
+        old_exercise.assets.removed_s3_objects(&update.assets)
+    };
+    for image in images_to_delete {
         file_storage_service::delete_object(ss, image).await?;
     }
-    if input.should_delete.unwrap_or_default() {
+    for video in videos_to_delete {
+        file_storage_service::delete_object(ss, video).await?;
+    }
+    if delete_entity {
         let ute = UserToEntity::find()
             .filter(user_to_entity::Column::UserId.eq(&user_id))
             .filter(user_to_entity::Column::ExerciseId.eq(&id))
             .one(&ss.db)
             .await?
             .ok_or_else(|| anyhow!("Exercise does not exist"))?;
-        if let Some(exercise_extra_information) = ute.exercise_extra_information {
-            if !exercise_extra_information.history.is_empty() {
-                bail!("Exercise is associated with one or more workouts.",);
-            }
+        if let Some(exercise_extra_information) = ute.exercise_extra_information
+            && !exercise_extra_information.history.is_empty()
+        {
+            bail!("Exercise is associated with one or more workouts.",);
         }
         old_exercise.delete(&ss.db).await?;
         return Ok(true);

@@ -26,7 +26,6 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
 	DashboardElementLot,
-	GridPacking,
 	MediaLot,
 	UpdateUserPreferenceDocument,
 	type UserPreferences,
@@ -118,9 +117,9 @@ const notificationContent = {
 type UpdatePreferenceFunc = (draft: Draft<UserPreferences>) => void;
 
 export default function Page() {
-	const loaderData = useLoaderData<typeof loader>();
 	const coreDetails = useCoreDetails();
 	const userPreferences = useUserPreferences();
+	const loaderData = useLoaderData<typeof loader>();
 	const isFitnessActionActive = useIsFitnessActionActive();
 	const [defaultTab, setDefaultTab] = useState(
 		loaderData.query.defaultTab || "dashboard",
@@ -160,26 +159,41 @@ export default function Page() {
 						right: rem(isFitnessActionActive ? 100 : 40),
 					}}
 				>
-					<Button
-						color="green"
-						variant="outline"
-						leftSection={<IconCheckbox size={20} />}
-						loading={updateUserPreferencesMutation.isPending}
-						onClick={async () => {
-							await updateUserPreferencesMutation.mutateAsync();
-							notifications.show({
-								color: "green",
-								title: "Preferences updated",
-								message: "Preferences have been updated.",
-							});
-							setChangingUserPreferences({
-								isChanged: false,
-								value: userPreferences,
-							});
-						}}
-					>
-						Save changes
-					</Button>
+					<Group gap="xs">
+						<Button
+							variant="outline"
+							color="red"
+							disabled={updateUserPreferencesMutation.isPending}
+							onClick={() => {
+								setChangingUserPreferences({
+									isChanged: false,
+									value: userPreferences,
+								});
+							}}
+						>
+							Cancel changes
+						</Button>
+						<Button
+							color="green"
+							variant="outline"
+							leftSection={<IconCheckbox size={20} />}
+							loading={updateUserPreferencesMutation.isPending}
+							onClick={async () => {
+								await updateUserPreferencesMutation.mutateAsync();
+								notifications.show({
+									color: "green",
+									title: "Preferences updated",
+									message: "Preferences have been updated.",
+								});
+								setChangingUserPreferences({
+									isChanged: false,
+									value: userPreferences,
+								});
+							}}
+						>
+							Save changes
+						</Button>
+					</Group>
 				</Affix>
 			) : null}
 			<Stack>
@@ -407,26 +421,6 @@ export default function Page() {
 											if (val) {
 												updatePreference((draft) => {
 													draft.general.reviewScale = val as UserReviewScale;
-												});
-											}
-										}}
-									/>
-								</Input.Wrapper>
-								<Input.Wrapper
-									label="Grid packing"
-									description="Display size for library user interface elements"
-								>
-									<SegmentedControl
-										mt="xs"
-										size="xs"
-										fullWidth
-										disabled={!!isEditDisabled}
-										defaultValue={userPreferences.general.gridPacking}
-										data={convertEnumToSelectData(GridPacking)}
-										onChange={(val) => {
-											if (val) {
-												updatePreference((draft) => {
-													draft.general.gridPacking = val as GridPacking;
 												});
 											}
 										}}

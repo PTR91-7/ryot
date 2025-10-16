@@ -776,13 +776,13 @@ export enum ExerciseLevel {
 }
 
 export type ExerciseListFilter = {
-  collection?: InputMaybe<Scalars['String']['input']>;
-  equipment?: InputMaybe<ExerciseEquipment>;
-  force?: InputMaybe<ExerciseForce>;
-  level?: InputMaybe<ExerciseLevel>;
-  mechanic?: InputMaybe<ExerciseMechanic>;
-  muscle?: InputMaybe<ExerciseMuscle>;
-  type?: InputMaybe<ExerciseLot>;
+  collections?: InputMaybe<Array<MediaCollectionFilter>>;
+  equipments?: InputMaybe<Array<ExerciseEquipment>>;
+  forces?: InputMaybe<Array<ExerciseForce>>;
+  levels?: InputMaybe<Array<ExerciseLevel>>;
+  mechanics?: InputMaybe<Array<ExerciseMechanic>>;
+  muscles?: InputMaybe<Array<ExerciseMuscle>>;
+  types?: InputMaybe<Array<ExerciseLot>>;
 };
 
 /** The different types of exercises that can be done. */
@@ -997,11 +997,6 @@ export type GraphqlPersonDetails = {
 export enum GraphqlSortOrder {
   Asc = 'ASC',
   Desc = 'DESC'
-}
-
-export enum GridPacking {
-  Dense = 'DENSE',
-  Normal = 'NORMAL'
 }
 
 export type GroupedCalendarEvent = {
@@ -1547,14 +1542,14 @@ export type MutationRoot = {
   createOrUpdateReview: StringIdObject;
   /** Create or update an integration for the currently logged in user. */
   createOrUpdateUserIntegration: Scalars['Boolean']['output'];
+  /** Create or update a user measurement. */
+  createOrUpdateUserMeasurement: Scalars['DateTime']['output'];
   /** Take a user workout, process it and commit it to database. */
   createOrUpdateUserWorkout: Scalars['String']['output'];
   /** Create or update a workout template. */
   createOrUpdateUserWorkoutTemplate: Scalars['String']['output'];
   /** Create, like or delete a comment on a review. */
   createReviewComment: Scalars['Boolean']['output'];
-  /** Create a user measurement. */
-  createUserMeasurement: Scalars['DateTime']['output'];
   /** Add a notification platform for the currently logged in user. */
   createUserNotificationPlatform: Scalars['String']['output'];
   /** Delete a collection. */
@@ -1627,7 +1622,7 @@ export type MutationRoot = {
    * and `review` associations with to the metadata.
    */
   mergeMetadata: Scalars['Boolean']['output'];
-  /** Get a presigned URL (valid for 10 minutes) for a given file name. */
+  /** Get a presigned URL (valid for 10 minutes) for uploads under a prefix. */
   presignedPutS3Url: PresignedPutUrlResponse;
   /** Get an access token using an access link. */
   processAccessLink: ProcessAccessLinkResult;
@@ -1721,6 +1716,11 @@ export type MutationRootCreateOrUpdateUserIntegrationArgs = {
 };
 
 
+export type MutationRootCreateOrUpdateUserMeasurementArgs = {
+  input: UserMeasurementInput;
+};
+
+
 export type MutationRootCreateOrUpdateUserWorkoutArgs = {
   input: UserWorkoutInput;
 };
@@ -1733,11 +1733,6 @@ export type MutationRootCreateOrUpdateUserWorkoutTemplateArgs = {
 
 export type MutationRootCreateReviewCommentArgs = {
   input: CreateReviewCommentInput;
-};
-
-
-export type MutationRootCreateUserMeasurementArgs = {
-  input: UserMeasurementInput;
 };
 
 
@@ -1865,7 +1860,7 @@ export type MutationRootMergeMetadataArgs = {
 
 
 export type MutationRootPresignedPutS3UrlArgs = {
-  input: PresignedPutUrlInput;
+  prefix: Scalars['String']['input'];
 };
 
 
@@ -2085,11 +2080,6 @@ export type PodcastSpecificsInput = {
   totalEpisodes: Scalars['Int']['input'];
 };
 
-export type PresignedPutUrlInput = {
-  fileName: Scalars['String']['input'];
-  prefix: Scalars['String']['input'];
-};
-
 export type PresignedPutUrlResponse = {
   __typename?: 'PresignedPutUrlResponse';
   key: Scalars['String']['output'];
@@ -2189,6 +2179,8 @@ export type QueryRoot = {
   userCollectionsList: CachedCollectionsListResponse;
   /** Get details about the currently logged in user. */
   userDetails: UserDetailsResult;
+  /** Returns whether the current user has recently consumed the specified entity. */
+  userEntityRecentlyConsumed: Scalars['Boolean']['output'];
   /** Get information about an exercise for a user. */
   userExerciseDetails: UserExerciseDetails;
   /** Get a paginated list of exercises in the database. */
@@ -2311,6 +2303,12 @@ export type QueryRootUserByOidcIssuerIdArgs = {
 
 export type QueryRootUserCalendarEventsArgs = {
   input: UserCalendarEventInput;
+};
+
+
+export type QueryRootUserEntityRecentlyConsumedArgs = {
+  entityId: Scalars['String']['input'];
+  entityLot: EntityLot;
 };
 
 
@@ -2891,7 +2889,6 @@ export type UserGeneralPreferences = {
   disableVideos: Scalars['Boolean']['output'];
   disableWatchProviders: Scalars['Boolean']['output'];
   displayNsfw: Scalars['Boolean']['output'];
-  gridPacking: GridPacking;
   landingPath: Scalars['String']['output'];
   listPageSize: Scalars['Int']['output'];
   reviewScale: UserReviewScale;
@@ -2907,7 +2904,6 @@ export type UserGeneralPreferencesInput = {
   disableVideos: Scalars['Boolean']['input'];
   disableWatchProviders: Scalars['Boolean']['input'];
   displayNsfw: Scalars['Boolean']['input'];
-  gridPacking: GridPacking;
   landingPath: Scalars['String']['input'];
   listPageSize: Scalars['Int']['input'];
   reviewScale: UserReviewScale;
@@ -3022,8 +3018,6 @@ export type UserMetadataDetails = {
   history: Array<Seen>;
   /** The seen item if it is in progress. */
   inProgress?: Maybe<Seen>;
-  /** Whether this media has been recently interacted with */
-  isRecentlyConsumed: Scalars['Boolean']['output'];
   /** The reasons why this metadata is related to this user */
   mediaReason?: Maybe<Array<UserToMediaReason>>;
   /** The next episode/chapter of this media. */
@@ -3058,7 +3052,6 @@ export type UserMetadataGroupDetails = {
   averageRating?: Maybe<Scalars['Decimal']['output']>;
   collections: Array<GraphqlCollectionToEntityDetails>;
   hasInteracted: Scalars['Boolean']['output'];
-  isRecentlyConsumed: Scalars['Boolean']['output'];
   reviews: Array<ReviewItem>;
 };
 
@@ -3118,7 +3111,6 @@ export type UserPersonDetails = {
   averageRating?: Maybe<Scalars['Decimal']['output']>;
   collections: Array<GraphqlCollectionToEntityDetails>;
   hasInteracted: Scalars['Boolean']['output'];
-  isRecentlyConsumed: Scalars['Boolean']['output'];
   reviews: Array<ReviewItem>;
 };
 
