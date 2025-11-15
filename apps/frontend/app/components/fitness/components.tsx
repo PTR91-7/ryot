@@ -4,26 +4,33 @@ import {
 	Anchor,
 	Badge,
 	Box,
+	Button,
+	Center,
 	Flex,
 	Group,
 	Image,
+	Modal,
+	NumberInput,
 	Paper,
 	Popover,
 	ScrollArea,
 	SimpleGrid,
 	Skeleton,
 	Stack,
+	Switch,
 	Text,
 	useMantineTheme,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
+import Body, { type ExtendedBodyPart } from "@mjcdev/react-body-highlighter";
 import {
 	type ExerciseLot,
 	SetLot,
 	type UserUnitSystem,
 	type WorkoutSupersetsInformation,
 } from "@ryot/generated/graphql/backend/graphql";
-import { changeCase, startCase } from "@ryot/ts-utils";
+import { changeCase, isNumber, snakeCase, startCase } from "@ryot/ts-utils";
 import {
 	IconArrowLeftToArc,
 	IconClock,
@@ -35,8 +42,9 @@ import {
 	IconWeight,
 	IconZzz,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import type { ComponentType } from "react";
+import { type UseMutationResult, useQuery } from "@tanstack/react-query";
+import { produce } from "immer";
+import type { ComponentType, Dispatch, SetStateAction } from "react";
 import { Link } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
@@ -140,7 +148,7 @@ export const ExerciseHistory = (props: {
 	const [opened, { toggle }] = useDisclosure(false);
 	const [parent] = useAutoAnimate();
 	const { data: workoutDetails } = useQuery(
-		// @ts-ignore: Too complicated to fix and it just works this way
+		// @ts-expect-error: Too complicated to fix and it just works this way
 		match(props.fitnessEntityType)
 			.with(FitnessEntity.Workouts, () =>
 				getWorkoutDetailsQuery(props.entityId),
@@ -321,4 +329,189 @@ const DisplayExerciseAttributes = (props: {
 			</Text>
 		</Flex>
 	) : null;
+};
+
+export const ExerciseUpdatePreferencesModal = (props: {
+	opened: boolean;
+	onClose: () => void;
+	userExerciseDetails: {
+		details?: {
+			exerciseExtraInformation?: {
+				settings: {
+					excludeFromAnalytics?: boolean;
+					setRestTimers: Record<string, number | null>;
+				};
+			} | null;
+		} | null;
+	};
+	changingExerciseSettings: {
+		isChanged: boolean;
+		value: {
+			excludeFromAnalytics: boolean;
+			setRestTimers: Record<string, number | null>;
+		};
+	};
+	setChangingExerciseSettings: Dispatch<
+		SetStateAction<{
+			isChanged: boolean;
+			value: {
+				excludeFromAnalytics: boolean;
+				setRestTimers: Record<string, number | null>;
+			};
+		}>
+	>;
+	updateUserExerciseSettingsMutation: UseMutationResult<
+		void,
+		Error,
+		void,
+		unknown
+	>;
+}) => {
+	return (
+		<Modal
+			centered
+			withCloseButton={false}
+			opened={props.opened}
+			onClose={props.onClose}
+		>
+			<Stack>
+				<Switch
+					label="Exclude from analytics"
+					defaultChecked={
+						props.userExerciseDetails.details?.exerciseExtraInformation
+							?.settings.excludeFromAnalytics
+					}
+					onChange={(ev) => {
+						props.setChangingExerciseSettings(
+							produce(props.changingExerciseSettings, (draft) => {
+								draft.isChanged = true;
+								draft.value.excludeFromAnalytics = ev.currentTarget.checked;
+							}),
+						);
+					}}
+				/>
+				<Text size="sm">
+					When a new set is added, rest timers will be added automatically
+					according to the settings below.
+					<Text size="xs" c="dimmed" span>
+						{" "}
+						Default rest timer durations for all exercises can be changed in the
+						fitness preferences.
+					</Text>
+				</Text>
+				<SimpleGrid cols={2}>
+					{(["normal", "warmup", "drop", "failure"] as const).map((name) => {
+						const value =
+							props.userExerciseDetails.details?.exerciseExtraInformation
+								?.settings.setRestTimers[name];
+						return (
+							<NumberInput
+								suffix="s"
+								key={name}
+								label={changeCase(snakeCase(name))}
+								defaultValue={isNumber(value) ? value : undefined}
+								onChange={(val) => {
+									if (isNumber(val))
+										props.setChangingExerciseSettings(
+											produce(props.changingExerciseSettings, (draft) => {
+												draft.isChanged = true;
+												draft.value.setRestTimers[name] = val;
+											}),
+										);
+								}}
+							/>
+						);
+					})}
+				</SimpleGrid>
+				<Button
+					type="submit"
+					disabled={!props.changingExerciseSettings.isChanged}
+					loading={props.updateUserExerciseSettingsMutation.isPending}
+					onClick={async () => {
+						await props.updateUserExerciseSettingsMutation.mutateAsync();
+						notifications.show({
+							color: "green",
+							title: "Settings updated",
+							message: "Settings for the exercise have been updated.",
+						});
+						props.onClose();
+					}}
+				>
+					Save settings
+				</Button>
+			</Stack>
+		</Modal>
+	);
+};
+
+export const ExerciseMusclesModal = (props: {
+	opened: boolean;
+	onClose: () => void;
+	bodyViewSide: "front" | "back";
+	setBodyViewSide: Dispatch<SetStateAction<"front" | "back">>;
+	bodyViewGender: "male" | "female";
+	setBodyViewGender: Dispatch<SetStateAction<"male" | "female">>;
+	bodyPartsData: ExtendedBodyPart[];
+}) => {
+	return (
+		<Modal
+			centered
+			size="lg"
+			title="Muscles"
+			opened={props.opened}
+			onClose={props.onClose}
+		>
+			<Stack>
+				<Group justify="center" gap="lg">
+					<Group gap="xs">
+						<Text size="sm">Side:</Text>
+						<Button.Group>
+							<Button
+								size="xs"
+								onClick={() => props.setBodyViewSide("front")}
+								variant={props.bodyViewSide === "front" ? "filled" : "outline"}
+							>
+								Front
+							</Button>
+							<Button
+								size="xs"
+								onClick={() => props.setBodyViewSide("back")}
+								variant={props.bodyViewSide === "back" ? "filled" : "outline"}
+							>
+								Back
+							</Button>
+						</Button.Group>
+					</Group>
+					<Group gap="xs">
+						<Text size="sm">Gender:</Text>
+						<Button.Group>
+							<Button
+								size="xs"
+								onClick={() => props.setBodyViewGender("male")}
+								variant={props.bodyViewGender === "male" ? "filled" : "outline"}
+							>
+								Male
+							</Button>
+							<Button
+								size="xs"
+								onClick={() => props.setBodyViewGender("female")}
+								variant={
+									props.bodyViewGender === "female" ? "filled" : "outline"
+								}
+							>
+								Female
+							</Button>
+						</Button.Group>
+					</Group>
+				</Group>
+				<Center>
+					<Body
+						side={props.bodyViewSide}
+						data={props.bodyPartsData}
+						gender={props.bodyViewGender}
+					/>
+				</Center>
+			</Stack>
+		</Modal>
+	);
 };

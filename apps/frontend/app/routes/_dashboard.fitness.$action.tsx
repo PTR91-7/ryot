@@ -3,7 +3,7 @@ import { Button, Container, Group, Skeleton, Stack } from "@mantine/core";
 import { isNumber, isString, parseParameters } from "@ryot/ts-utils";
 import { produce } from "immer";
 import { RESET } from "jotai/utils";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLoaderData } from "react-router";
 import { ClientOnly } from "remix-utils/client-only";
 import { $path } from "safe-routes";
@@ -66,6 +66,7 @@ export default function Page() {
 	const [_, setMeasurementsDrawerData] = useMeasurementsDrawer();
 	const [currentWorkout, setCurrentWorkout] = useCurrentWorkout();
 	const [currentTimer, setCurrentTimer] = useCurrentWorkoutTimerAtom();
+	const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 	const performTasksAfterSetConfirmed = usePerformTasksAfterSetConfirmed();
 	const timerCompleteSound = usePlayFitnessSound("timer-completed");
 	const [isSaveBtnLoading, setIsSaveBtnLoading] = useState(false);
@@ -73,13 +74,19 @@ export default function Page() {
 	const {
 		openTimerDrawer,
 		closeTimerDrawer,
+		exerciseToDelete,
 		toggleTimerDrawer,
 		openReorderDrawer,
 		timerDrawerOpened,
 		assetsModalOpened,
+		openBulkDeleteDrawer,
 		setAssetsModalOpened,
+		closeBulkDeleteDrawer,
 		isReorderDrawerOpened,
 		setSupersetModalOpened,
+		bulkDeleteDrawerOpened,
+		closeNotificationModal,
+		notificationModalOpened,
 		setIsReorderDrawerOpened,
 		supersetWithExerciseIdentifier,
 	} = useWorkoutModals();
@@ -104,9 +111,9 @@ export default function Page() {
 		timerCompleteSound();
 		if (document.visibilityState === "visible") return;
 		sendNotificationToServiceWorker({
+			tag: "timer-completed",
 			title: "Timer completed",
 			body: "Let's get this done!",
-			tag: "timer-completed",
 			data: { event: "open-link", link: window.location.href },
 		});
 	};
@@ -151,6 +158,24 @@ export default function Page() {
 			);
 		}
 		setCurrentTimer(RESET);
+	};
+
+	const acquireWakeLock = async () => {
+		if ("wakeLock" in navigator)
+			try {
+				wakeLockRef.current = await navigator.wakeLock.request("screen");
+				wakeLockRef.current.addEventListener("release", () => {
+					wakeLockRef.current = null;
+				});
+			} catch {}
+	};
+
+	const releaseWakeLock = async () => {
+		if (wakeLockRef.current)
+			try {
+				await wakeLockRef.current.release();
+				wakeLockRef.current = null;
+			} catch {}
 	};
 
 	useInterval(() => {
@@ -224,6 +249,20 @@ export default function Page() {
 			}
 		}
 	}, 1000);
+	useEffect(() => {
+		acquireWakeLock();
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "visible" && !wakeLockRef.current)
+				acquireWakeLock();
+		};
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+
+		return () => {
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			releaseWakeLock();
+		};
+	}, []);
 
 	return (
 		<Container size="sm">
@@ -236,13 +275,18 @@ export default function Page() {
 								startTimer={startTimer}
 								openTimerDrawer={openTimerDrawer}
 								closeTimerDrawer={closeTimerDrawer}
+								exerciseToDelete={exerciseToDelete}
 								assetsModalOpened={assetsModalOpened}
 								timerDrawerOpened={timerDrawerOpened}
 								toggleTimerDrawer={toggleTimerDrawer}
 								pauseOrResumeTimer={pauseOrResumeTimer}
 								setAssetsModalOpened={setAssetsModalOpened}
 								isReorderDrawerOpened={isReorderDrawerOpened}
+								closeBulkDeleteDrawer={closeBulkDeleteDrawer}
 								setSupersetModalOpened={setSupersetModalOpened}
+								closeNotificationModal={closeNotificationModal}
+								bulkDeleteDrawerOpened={bulkDeleteDrawerOpened}
+								notificationModalOpened={notificationModalOpened}
 								currentWorkoutExercises={currentWorkout.exercises}
 								setIsReorderDrawerOpened={setIsReorderDrawerOpened}
 								supersetWithExerciseIdentifier={supersetWithExerciseIdentifier}
@@ -273,6 +317,7 @@ export default function Page() {
 										isWorkoutPaused={isWorkoutPaused}
 										openTimerDrawer={openTimerDrawer}
 										reorderDrawerToggle={openReorderDrawer}
+										openBulkDeleteDrawer={openBulkDeleteDrawer}
 										isCreatingTemplate={loaderData.isCreatingTemplate}
 										openSupersetModal={(s) => setSupersetModalOpened(s)}
 										setOpenAssetsModal={() =>

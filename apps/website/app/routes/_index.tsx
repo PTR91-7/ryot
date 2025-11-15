@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import TTLCache from "@isaacs/ttlcache";
+import { TTLCache } from "@isaacs/ttlcache";
 import ContactSubmissionEmail from "@ryot/transactional/emails/ContactSubmission";
 import LoginCodeEmail from "@ryot/transactional/emails/LoginCode";
 import {

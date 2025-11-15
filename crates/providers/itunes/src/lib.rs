@@ -1,9 +1,9 @@
 use anyhow::Result;
-use application_utils::get_base_http_client;
 use async_trait::async_trait;
 use chrono::Datelike;
 use common_models::{EntityAssets, NamedObject, SearchDetails};
 use common_utils::PAGE_SIZE;
+use common_utils::get_base_http_client;
 use dependent_models::{MetadataSearchSourceSpecifics, SearchResults};
 use itertools::Itertools;
 use media_models::{
@@ -196,7 +196,7 @@ impl MediaProvider for ITunesService {
 
         let resp = resp
             .into_iter()
-            .skip(((page - 1) * PAGE_SIZE).try_into().unwrap())
+            .skip((page.saturating_sub(1) * PAGE_SIZE).try_into().unwrap())
             .take(PAGE_SIZE.try_into().unwrap())
             .collect_vec();
 

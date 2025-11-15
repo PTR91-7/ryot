@@ -8,18 +8,18 @@ export interface StringIdAndNamedObject {
 }
 
 export interface UserToCollectionExtraInformation {
-	isHidden: boolean | null;
+	is_hidden: boolean | null;
 }
 
 export interface CollectionItemCollaboratorInformation {
 	collaborator: StringIdAndNamedObject;
-	extraInformation: UserToCollectionExtraInformation | null;
+	extra_information: UserToCollectionExtraInformation | null;
 }
 
 export type CollectionExtraInformationLot = 'date' | 'number' | 'string' | 'boolean' | 'date-time' | 'string-array';
 
 export interface CollectionExtraInformation {
-	defaultValue: string | null;
+	default_value: string | null;
 	description: string;
 	/**
 	 * @default 'string'
@@ -27,7 +27,7 @@ export interface CollectionExtraInformation {
 	 */
 	lot: CollectionExtraInformationLot;
 	name: string;
-	possibleValues: string[] | null;
+	possible_values: string[] | null;
 	required: boolean | null;
 }
 
@@ -37,18 +37,18 @@ export interface CollectionItem {
 	creator: StringIdAndNamedObject;
 	description: string | null;
 	id: string;
-	informationTemplate: CollectionExtraInformation[] | null;
-	isDefault: boolean;
+	information_template: CollectionExtraInformation[] | null;
+	is_default: boolean;
 	name: string;
 }
 
 export interface CollectionToEntityDetails {
-	collectionId: string;
-	collectionName: string;
-	createdOn: string;
-	creatorUserId: string;
+	collection_id: string;
+	collection_name: string;
+	created_on: string;
+	creator_user_id: string;
 	information: unknown | null;
-	lastUpdatedOn: string;
+	last_updated_on: string;
 	/** The rank of this entity in the collection. This is ignored during importing. */
 	rank?: string;
 }
@@ -163,6 +163,8 @@ export interface UserMeasurement {
 /** The different types of media that can be stored. */
 export type MediaLot = 'book' | 'show' | 'movie' | 'anime' | 'manga' | 'music' | 'podcast' | 'audio_book' | 'video_game' | 'visual_novel';
 
+export type SeenState = 'dropped' | 'on_a_hold' | 'completed' | 'in_progress';
+
 /** A specific instance when an entity was seen. */
 export interface ImportOrExportMetadataItemSeen {
 	/** If for an anime, the episode which was seen. */
@@ -187,6 +189,12 @@ export interface ImportOrExportMetadataItemSeen {
 	show_season_number: number | null;
 	/** The timestamp when started watching. */
 	started_on: string | null;
+	/**
+	 * The state of the media item.
+	 *
+	 * @default 'completed'
+	 */
+	state: SeenState | null;
 }
 
 /** The different sources (or providers) from which data can be obtained from. */

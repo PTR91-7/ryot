@@ -1,10 +1,10 @@
 use std::{collections::HashMap, env, sync::Arc};
 
 use anyhow::Result;
-use application_utils::get_base_http_client;
 use async_trait::async_trait;
 use chrono::Datelike;
 use common_models::{EntityAssets, IdAndNamedObject, SearchDetails};
+use common_utils::get_base_http_client;
 use common_utils::{PAGE_SIZE, convert_naive_to_utc};
 use dependent_models::MetadataSearchSourceSpecifics;
 use dependent_models::{ApplicationCacheKey, ApplicationCacheValue, SearchResults};
@@ -140,7 +140,7 @@ impl MediaProvider for ListennotesService {
             .query(&[
                 ("q", query),
                 ("type", "podcast"),
-                ("offset", &((page - 1) * PAGE_SIZE).to_string()),
+                ("offset", &(page.saturating_sub(1) * PAGE_SIZE).to_string()),
             ])
             .send()
             .await?;

@@ -172,6 +172,7 @@ pub enum CollectionExtraInformationLot {
     InputObject,
     FromJsonQueryResult,
 )]
+#[serde(rename_all = "snake_case")]
 #[graphql(input_name = "CollectionExtraInformationInput")]
 pub struct CollectionExtraInformation {
     pub name: String,
@@ -258,6 +259,7 @@ pub struct NamedObject {
     pub name: String,
 }
 
+#[skip_serializing_none]
 #[derive(
     Eq,
     Clone,
@@ -433,6 +435,7 @@ pub struct EntityRecentlyConsumedCacheInput {
 #[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetadataLookupCacheInput {
     pub title: String,
+    pub language: Option<String>,
 }
 
 #[skip_serializing_none]
@@ -455,6 +458,7 @@ pub struct YoutubeMusicSongListened {
     SimpleObject,
     FromJsonQueryResult,
 )]
+#[serde(rename_all = "snake_case")]
 #[graphql(input_name = "UserToCollectionExtraInformationInput")]
 pub struct UserToCollectionExtraInformation {
     pub is_hidden: Option<bool>,

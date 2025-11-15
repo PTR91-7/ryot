@@ -8,7 +8,11 @@ use common_models::{
     ReorderCollectionEntityInput, StringIdObject,
 };
 use common_utils::ryot_log;
-use database_models::{collection, collection_to_entity, prelude::*, user_to_entity};
+use database_models::{
+    collection, collection_to_entity,
+    prelude::{Collection, CollectionToEntity, UserToEntity},
+    user_to_entity,
+};
 use database_utils::server_key_validation_guard;
 use dependent_core_utils::is_server_key_validated;
 use dependent_utility_utils::{
@@ -19,8 +23,7 @@ use enum_models::EntityLot;
 use futures::try_join;
 use itertools::Itertools;
 use media_models::CreateOrUpdateCollectionInput;
-use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
+use rust_decimal::{Decimal, dec};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, FromQueryResult, IntoActiveModel,
     Iterable, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, prelude::Expr,

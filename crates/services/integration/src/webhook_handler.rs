@@ -6,7 +6,7 @@ use database_utils::user_by_id;
 use dependent_import_utils::process_import;
 use dependent_models::{ImportCompletedItem, ImportResult};
 use enum_models::IntegrationProvider;
-use rust_decimal_macros::dec;
+use rust_decimal::dec;
 use sea_orm::EntityTrait;
 use traits::TraceOk;
 
@@ -67,11 +67,11 @@ impl IntegrationService {
             IntegrationProvider::Kodi => sink::kodi::sink_progress(payload).await,
             IntegrationProvider::Emby => sink::emby::sink_progress(payload, &self.0).await,
             IntegrationProvider::JellyfinSink => sink::jellyfin::sink_progress(payload).await,
+            IntegrationProvider::GenericJson => sink::generic_json::sink_progress(payload).await,
             IntegrationProvider::PlexSink => {
                 let specifics = integration.clone().provider_specifics.unwrap();
                 sink::plex::sink_progress(payload, specifics.plex_sink_username, &self.0).await
             }
-            IntegrationProvider::GenericJson => sink::generic_json::sink_progress(payload).await,
             IntegrationProvider::RyotBrowserExtension => {
                 let specifics = integration.clone().provider_specifics.unwrap();
                 sink::ryot_browser_extension::sink_progress(

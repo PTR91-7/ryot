@@ -1,4 +1,8 @@
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    future::Future,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use common_models::{ChangeCollectionToEntitiesInput, EntityToCollectionInput};
@@ -21,9 +25,7 @@ use media_models::{
     PartialMetadataWithoutId, UniqueMediaIdentifier,
 };
 use rand::seq::SliceRandom;
-use rust_decimal::{Decimal, prelude::FromPrimitive};
-use rust_decimal_macros::dec;
-use std::collections::hash_map::Entry;
+use rust_decimal::{Decimal, dec, prelude::FromPrimitive};
 use supporting_service::SupportingService;
 
 async fn create_collection_and_add_entity_to_it(
@@ -134,11 +136,11 @@ where
         .collect();
 
     import.completed.retain(|i| match i {
+        ImportCompletedItem::Person(p) => !p.reviews.is_empty() || !p.collections.is_empty(),
+        ImportCompletedItem::MetadataGroup(m) => !m.reviews.is_empty() || !m.collections.is_empty(),
         ImportCompletedItem::Metadata(m) => {
             !m.seen_history.is_empty() || !m.reviews.is_empty() || !m.collections.is_empty()
         }
-        ImportCompletedItem::Person(p) => !p.reviews.is_empty() || !p.collections.is_empty(),
-        ImportCompletedItem::MetadataGroup(m) => !m.reviews.is_empty() || !m.collections.is_empty(),
         _ => true,
     });
 
@@ -157,13 +159,7 @@ where
     let mut need_to_schedule_user_for_workout_revision = false;
 
     for (idx, item) in import.completed.into_iter().enumerate() {
-        ryot_log!(
-            debug,
-            "Processing item ({}) {}/{}",
-            item.to_string(),
-            idx + 1,
-            total,
-        );
+        ryot_log!(debug, "Processing item ({:#}) {}/{}", item, idx + 1, total,);
         match item {
             ImportCompletedItem::Empty => {}
             ImportCompletedItem::Metadata(metadata) => {
@@ -426,10 +422,13 @@ where
             }
         }
 
-        on_item_processed(
-            Decimal::from_usize(idx + 1).unwrap() / Decimal::from_usize(total).unwrap() * dec!(100),
-        )
-        .await?;
+        if idx % 10 == 0 || idx + 1 == total {
+            on_item_processed(
+                Decimal::from_usize(idx + 1).unwrap() / Decimal::from_usize(total).unwrap()
+                    * dec!(100),
+            )
+            .await?;
+        }
     }
 
     if need_to_schedule_user_for_workout_revision {

@@ -16,7 +16,6 @@ use common_utils::{PROJECT_NAME, get_temporary_directory, ryot_log};
 use config_definition::AppConfig;
 use dependent_models::CompleteExport;
 use env_utils::APP_VERSION;
-use logs_wheel::LogFileInitializer;
 use migrations_sql::Migrator;
 use schematic::schema::{SchemaGenerator, TypeScriptRenderer, YamlTemplateRenderer};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
@@ -32,7 +31,7 @@ use crate::{
     common::create_app_services,
     job::{
         perform_hp_application_job, perform_lp_application_job, perform_mp_application_job,
-        run_frequent_cron_jobs, run_infrequent_cron_jobs,
+        perform_single_application_job, run_frequent_cron_jobs, run_infrequent_cron_jobs,
     },
 };
 
@@ -94,6 +93,7 @@ async fn main() -> Result<()> {
     let lp_application_job_storage = MemoryStorage::new();
     let mp_application_job_storage = MemoryStorage::new();
     let hp_application_job_storage = MemoryStorage::new();
+    let single_application_job_storage = MemoryStorage::new();
 
     let tz: chrono_tz::Tz = env::var("TZ")
         .map(|s| s.parse().unwrap())
@@ -107,6 +107,7 @@ async fn main() -> Result<()> {
         .lp_application_job(&lp_application_job_storage)
         .mp_application_job(&mp_application_job_storage)
         .hp_application_job(&hp_application_job_storage)
+        .single_application_job(&single_application_job_storage)
         .call()
         .await;
 
@@ -192,9 +193,18 @@ async fn main() -> Result<()> {
                 .catch_panic()
                 .enable_tracing()
                 .rate_limit(20, Duration::new(5, 0))
-                .data(app_services)
+                .data(app_services.clone())
                 .backend(lp_application_job_storage)
                 .build_fn(perform_lp_application_job),
+        )
+        .register(
+            WorkerBuilder::new("perform_single_application_job")
+                .catch_panic()
+                .enable_tracing()
+                .rate_limit(1, Duration::new(1, 0))
+                .data(app_services)
+                .backend(single_application_job_storage)
+                .build_fn(perform_single_application_job),
         )
         .run();
 
@@ -212,14 +222,8 @@ async fn main() -> Result<()> {
 fn init_tracing() -> Result<()> {
     let tmp_dir = PathBuf::new().join(get_temporary_directory());
     create_dir_all(&tmp_dir)?;
-    let log_file = LogFileInitializer {
-        max_n_old_files: 2,
-        directory: tmp_dir,
-        filename: PROJECT_NAME,
-        preferred_max_file_size_mib: 1,
-    }
-    .init()?;
-    let writer = Mutex::new(log_file);
+    let file_appender = tracing_appender::rolling::never(tmp_dir, PROJECT_NAME);
+    let writer = Mutex::new(file_appender);
     tracing::subscriber::set_global_default(
         fmt::Subscriber::builder()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

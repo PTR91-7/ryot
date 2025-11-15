@@ -8,12 +8,11 @@ use dependent_models::{
 };
 use enum_models::{ImportSource, MediaLot, MediaSource, Visibility};
 use media_models::{
-    DeployJsonImportInput, ImportOrExportItemRating, ImportOrExportItemReview,
+    DeployPathImportInput, ImportOrExportItemRating, ImportOrExportItemReview,
     ImportOrExportMetadataItemSeen,
 };
 use nest_struct::nest_struct;
-use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
+use rust_decimal::{Decimal, dec};
 use serde::Deserialize;
 use supporting_service::SupportingService;
 
@@ -62,10 +61,10 @@ struct AnilistExport {
 }
 
 pub async fn import(
-    input: DeployJsonImportInput,
+    input: DeployPathImportInput,
     ss: &Arc<SupportingService>,
 ) -> Result<ImportResult> {
-    let export = fs::read_to_string(input.export)?;
+    let export = fs::read_to_string(input.export_path)?;
     let data = serde_json::from_str::<AnilistExport>(&export)?;
     let user_lists = data.user.custom_lists;
     let mut completed = vec![];
