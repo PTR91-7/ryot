@@ -78,7 +78,7 @@ import {
 } from "~/lib/shared/hooks";
 import { MediaColors } from "~/lib/shared/media-utils";
 import { clientGqlService, queryFactory } from "~/lib/shared/react-query";
-import { selectRandomElement } from "~/lib/shared/ui-utils";
+import { selectRandomElement, triggerDownload } from "~/lib/shared/ui-utils";
 import { ApplicationTimeRange } from "~/lib/types";
 import { serverGqlService } from "~/lib/utilities.server";
 import type { Route } from "./+types/_dashboard.analytics";
@@ -129,7 +129,7 @@ const useGetUserAnalytics = () => {
 	const { startDate, endDate } = useTimeSpanSettings();
 	const input = { dateRange: { startDate, endDate } };
 
-	const { data: userAnalytics } = useQuery({
+	const userAnalytics = useQuery({
 		queryKey: queryFactory.miscellaneous.userAnalytics(input).queryKey,
 		queryFn: async () => {
 			return await clientGqlService
@@ -144,11 +144,12 @@ const isCaptureLoadingAtom = atom(false);
 
 export default function Page() {
 	const coreDetails = useCoreDetails();
-	const [customRangeOpened, setCustomRangeOpened] = useState(false);
+	const userAnalytics = useGetUserAnalytics();
 	const toCaptureRef = useRef<HTMLDivElement>(null);
+	const [customRangeOpened, setCustomRangeOpened] = useState(false);
+	const [isCaptureLoading, setIsCaptureLoading] = useAtom(isCaptureLoadingAtom);
 	const { timeSpanSettings, setTimeSpanSettings, startDate, endDate } =
 		useTimeSpanSettings();
-	const [isCaptureLoading, setIsCaptureLoading] = useAtom(isCaptureLoadingAtom);
 
 	return (
 		<>
@@ -174,6 +175,7 @@ export default function Page() {
 											w={{ md: 200 }}
 											variant="default"
 											ml={{ md: "auto" }}
+											loading={userAnalytics.isFetching}
 										>
 											<Stack gap={0}>
 												<Text size="xs">{timeSpanSettings.range}</Text>
@@ -264,7 +266,6 @@ export default function Page() {
 							setIsCaptureLoading(true);
 							setTimeout(async () => {
 								let downloadUrl: string | undefined;
-								let anchor: HTMLAnchorElement | undefined;
 								try {
 									const canvas = await html2canvas(current);
 									const dataUrl = canvas.toDataURL("image/png");
@@ -282,11 +283,7 @@ export default function Page() {
 										);
 									}
 									downloadUrl = URL.createObjectURL(blob);
-									anchor = document.createElement("a");
-									anchor.href = downloadUrl;
-									anchor.download = "download.png";
-									document.body.appendChild(anchor);
-									anchor.click();
+									triggerDownload(downloadUrl, "download.png");
 								} catch {
 									notifications.show({
 										color: "red",
@@ -294,7 +291,6 @@ export default function Page() {
 										message: "Something went wrong while capturing the image",
 									});
 								} finally {
-									if (anchor) anchor.remove();
 									if (downloadUrl) URL.revokeObjectURL(downloadUrl);
 									setIsCaptureLoading(false);
 								}
@@ -325,7 +321,7 @@ const DisplayStat = (props: {
 
 const ActivitySection = () => {
 	const userAnalytics = useGetUserAnalytics();
-	const dailyUserActivities = userAnalytics?.activities;
+	const dailyUserActivities = userAnalytics?.data?.activities;
 	const trackSeries = mapValues(MediaColors, () => false);
 
 	const data = dailyUserActivities?.items.map((d) => {
@@ -754,8 +750,8 @@ const ChartContainer = (props: ChartContainerProps) => {
 	);
 	const userAnalytics = useGetUserAnalytics();
 
-	const value = userAnalytics
-		? props.children(count, userAnalytics)
+	const value = userAnalytics.data
+		? props.children(count, userAnalytics.data)
 		: undefined;
 
 	return userPreferences.featuresEnabled.fitness.enabled ? (

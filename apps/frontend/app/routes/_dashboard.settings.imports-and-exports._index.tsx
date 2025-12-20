@@ -57,6 +57,7 @@ import { clientGqlService } from "~/lib/shared/react-query";
 import {
 	convertEnumToSelectData,
 	openConfirmationModal,
+	triggerDownload,
 } from "~/lib/shared/ui-utils";
 import {
 	createToastHeaders,
@@ -112,7 +113,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 				.with(
 					ImportSource.GenericJson,
 					ImportSource.Anilist,
-
+					ImportSource.Watcharr,
 					async () => ({
 						path: processSubmission(formData, exportPathImportFormSchema),
 					}),
@@ -419,6 +420,7 @@ export default function Page() {
 												))
 												.with(
 													ImportSource.Anilist,
+													ImportSource.Watcharr,
 													ImportSource.GenericJson,
 													() => (
 														<FileInput
@@ -615,13 +617,10 @@ export default function Page() {
 																						type: "application/json",
 																					});
 																					const url = URL.createObjectURL(blob);
-																					const link =
-																						document.createElement("a");
-																					link.href = url;
-																					link.download = `failed-items-${report.id}.json`;
-																					document.body.appendChild(link);
-																					link.click();
-																					document.body.removeChild(link);
+																					triggerDownload(
+																						url,
+																						`failed-items-${report.id}.json`,
+																					);
 																					URL.revokeObjectURL(url);
 																				}}
 																			>

@@ -24,6 +24,7 @@ pub const TWO_FACTOR_BACKUP_CODES_COUNT: u8 = 12;
 pub const FRONTEND_OAUTH_ENDPOINT: &str = "/api/auth";
 pub const AUTHOR_EMAIL: &str = "ignisda2001@gmail.com";
 pub const BULK_APPLICATION_UPDATE_CHUNK_SIZE: usize = 5;
+pub const MAX_PRESET_FILTERS_FOR_NON_PRO_USERS: u64 = 5;
 pub const MAX_IMPORT_RETRIES_FOR_PARTIAL_STATE: usize = 5;
 pub const BULK_DATABASE_UPDATE_OR_DELETE_CHUNK_SIZE: usize = 2000;
 pub const SHOW_SPECIAL_SEASON_NAMES: [&str; 2] = ["Specials", "Extras"];
@@ -41,8 +42,8 @@ pub const USER_AGENT_STR: &str = const_str::concat!(
     ")"
 );
 
-pub fn compute_next_page(page: u64, page_size: u64, total_items: u64) -> Option<u64> {
-    page.checked_mul(page_size)
+pub fn compute_next_page(page: u64, total_items: u64) -> Option<u64> {
+    page.checked_mul(PAGE_SIZE)
         .and_then(|count| (count < total_items).then(|| page.checked_add(1)))
         .flatten()
 }

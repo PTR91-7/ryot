@@ -134,22 +134,6 @@ export const convertRatingToUserScale = (
 		: Math.round(scaled * 10) / 10;
 };
 
-export const convertUserScaleToRating = (
-	rating: number | string | null | undefined,
-	scale: UserReviewScale,
-) => {
-	if (rating == null) return null;
-	const value = Number(rating);
-	if (Number.isNaN(value)) return null;
-
-	return match(scale)
-		.with(UserReviewScale.OutOfHundred, () => value)
-		.with(UserReviewScale.OutOfTen, () => value * 10)
-		.with(UserReviewScale.OutOfFive, () => value * 20)
-		.with(UserReviewScale.ThreePointSmiley, () => value)
-		.exhaustive();
-};
-
 export const formatRatingForDisplay = (
 	rating: number,
 	scale: UserReviewScale,
@@ -175,6 +159,15 @@ export const getExerciseDetailsPath = (exerciseId: string) =>
 	$path("/fitness/exercises/item/:id", {
 		id: encodeURIComponent(exerciseId),
 	});
+
+export const getPersonDetailsPath = (personId: string) =>
+	$path("/media/people/item/:id", { id: personId });
+
+export const getMetadataDetailsPath = (metadataId: string) =>
+	$path("/media/item/:id", { id: metadataId });
+
+export const getMetadataGroupDetailsPath = (groupId: string) =>
+	$path("/media/groups/item/:id", { id: groupId });
 
 type EntityColor = Record<MediaLot | (string & {}), MantineColor>;
 

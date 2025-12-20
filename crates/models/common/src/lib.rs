@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use async_graphql::{Enum, InputObject, SimpleObject};
 use chrono::NaiveDate;
 use enum_meta::{Meta, meta};
-use enum_models::{EntityLot, MediaLot, MediaSource};
+use enum_models::{EntityLot, FilterPresetContextType, MediaLot, MediaSource};
 use schematic::{ConfigEnum, Schematic};
 use sea_orm::{FromJsonQueryResult, prelude::DateTimeUtc, sea_query::PgDateTruncUnit};
 use serde::{Deserialize, Serialize};
@@ -54,6 +54,15 @@ pub struct IdAndNamedObject {
 pub struct StringIdAndNamedObject {
     pub id: String,
     pub name: String,
+}
+
+#[derive(
+    Debug, InputObject, Hash, PartialEq, Eq, Default, SimpleObject, Serialize, Deserialize, Clone,
+)]
+#[graphql(input_name = "EntityWithLotInput")]
+pub struct EntityWithLot {
+    pub entity_id: String,
+    pub entity_lot: EntityLot,
 }
 
 #[derive(
@@ -167,9 +176,9 @@ pub enum CollectionExtraInformationLot {
     PartialEq,
     Serialize,
     Schematic,
+    InputObject,
     Deserialize,
     SimpleObject,
-    InputObject,
     FromJsonQueryResult,
 )]
 #[serde(rename_all = "snake_case")]
@@ -262,8 +271,8 @@ pub struct NamedObject {
 #[skip_serializing_none]
 #[derive(
     Eq,
-    Clone,
     Hash,
+    Clone,
     Debug,
     Default,
     PartialEq,
@@ -303,6 +312,15 @@ pub struct ReorderCollectionEntityInput {
     pub entity_id: String,
     pub new_position: usize,
     pub collection_name: String,
+}
+
+#[skip_serializing_none]
+#[derive(Debug, InputObject, Clone, Serialize, Deserialize)]
+pub struct CreateFilterPresetInput {
+    pub name: String,
+    pub filters: serde_json::Value,
+    pub context_type: FilterPresetContextType,
+    pub context_information: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, SimpleObject, Clone)]
@@ -426,13 +444,6 @@ pub struct UserLevelCacheKey<T> {
 
 #[skip_serializing_none]
 #[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EntityRecentlyConsumedCacheInput {
-    pub entity_id: String,
-    pub entity_lot: EntityLot,
-}
-
-#[skip_serializing_none]
-#[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetadataLookupCacheInput {
     pub title: String,
     pub language: Option<String>,
@@ -468,4 +479,11 @@ pub struct UserToCollectionExtraInformation {
 pub struct PresignedPutUrlResponse {
     pub key: String,
     pub upload_url: String,
+}
+
+#[skip_serializing_none]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, Serialize, Deserialize, InputObject)]
+pub struct FilterPresetQueryInput {
+    pub context_type: FilterPresetContextType,
+    pub context_information: Option<serde_json::Value>,
 }

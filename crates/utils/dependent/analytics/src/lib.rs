@@ -18,8 +18,7 @@ use dependent_models::{ApplicationCacheKeyDiscriminants, ExpireCacheKeyInput};
 use enum_models::{EntityLot, MediaLot, SeenState};
 use futures::{TryStreamExt, try_join};
 use media_models::{
-    AnimeSpecifics, AudioBookSpecifics, BookSpecifics, MangaSpecifics, MovieSpecifics,
-    MusicSpecifics, PodcastSpecifics, SeenAnimeExtraInformation, SeenMangaExtraInformation,
+    AudioBookSpecifics, BookSpecifics, MovieSpecifics, MusicSpecifics, PodcastSpecifics,
     SeenPodcastExtraInformation, SeenShowExtraInformation, ShowSpecifics, VideoGameSpecifics,
     VisualNovelSpecifics,
 };
@@ -41,25 +40,20 @@ pub async fn calculate_user_activities_and_summary(
     #[derive(Debug, Serialize, Deserialize, Clone, FromQueryResult)]
     struct SeenItem {
         seen_id: String,
-        show_extra_information: Option<SeenShowExtraInformation>,
-        podcast_extra_information: Option<SeenPodcastExtraInformation>,
-        anime_extra_information: Option<SeenAnimeExtraInformation>,
-        manga_extra_information: Option<SeenMangaExtraInformation>,
-        metadata_id: String,
-        finished_on: Option<DateTimeUtc>,
-        last_updated_on: DateTimeUtc,
         metadata_lot: MediaLot,
-        audio_book_specifics: Option<AudioBookSpecifics>,
+        last_updated_on: DateTimeUtc,
+        finished_on: Option<DateTimeUtc>,
+        manual_time_spent: Option<Decimal>,
+        show_specifics: Option<ShowSpecifics>,
         book_specifics: Option<BookSpecifics>,
         movie_specifics: Option<MovieSpecifics>,
         music_specifics: Option<MusicSpecifics>,
         podcast_specifics: Option<PodcastSpecifics>,
-        show_specifics: Option<ShowSpecifics>,
         video_game_specifics: Option<VideoGameSpecifics>,
-        manual_time_spent: Option<Decimal>,
+        audio_book_specifics: Option<AudioBookSpecifics>,
         visual_novel_specifics: Option<VisualNovelSpecifics>,
-        anime_specifics: Option<AnimeSpecifics>,
-        manga_specifics: Option<MangaSpecifics>,
+        show_extra_information: Option<SeenShowExtraInformation>,
+        podcast_extra_information: Option<SeenPodcastExtraInformation>,
     }
 
     let start_from = match calculate_from_beginning {
@@ -140,9 +134,6 @@ pub async fn calculate_user_activities_and_summary(
         .columns([
             seen::Column::ShowExtraInformation,
             seen::Column::PodcastExtraInformation,
-            seen::Column::AnimeExtraInformation,
-            seen::Column::MangaExtraInformation,
-            seen::Column::MetadataId,
             seen::Column::FinishedOn,
             seen::Column::LastUpdatedOn,
             seen::Column::ManualTimeSpent,
@@ -157,8 +148,6 @@ pub async fn calculate_user_activities_and_summary(
             metadata::Column::ShowSpecifics,
             metadata::Column::VideoGameSpecifics,
             metadata::Column::VisualNovelSpecifics,
-            metadata::Column::AnimeSpecifics,
-            metadata::Column::MangaSpecifics,
         ])
         .into_model::<SeenItem>()
         .stream(&ss.db)

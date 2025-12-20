@@ -27,14 +27,14 @@ import {
 } from "@mantine/hooks";
 import {
 	EntityLot,
-	type ExerciseEquipment,
-	type ExerciseForce,
-	type ExerciseLevel,
-	type ExerciseLot,
-	type ExerciseMechanic,
-	type ExerciseMuscle,
+	ExerciseEquipment,
+	ExerciseForce,
+	ExerciseLevel,
+	ExerciseLot,
+	ExerciseMechanic,
+	ExerciseMuscle,
 	ExerciseSortBy,
-	type MediaCollectionFilter,
+	FilterPresetContextType,
 	MergeExerciseDocument,
 	UserExercisesListDocument,
 	type UserExercisesListInput,
@@ -55,23 +55,37 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { produce } from "immer";
+import {
+	type inferParserType,
+	parseAsArrayOf,
+	parseAsInteger,
+	parseAsString,
+	parseAsStringEnum,
+} from "nuqs";
+import { useMemo } from "react";
 import { Link, useNavigate, useSubmit } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
-import { useLocalStorage } from "usehooks-ts";
 import { z } from "zod";
 import {
 	ApplicationPagination,
 	DisplayListDetailsAndRefresh,
 	SkeletonLoader,
 } from "~/components/common";
-import { BulkCollectionEditingAffix } from "~/components/common/BulkCollectionEditingAffix";
+import { BulkCollectionEditingAffix } from "~/components/common/bulk-collection-editing-affix";
+import {
+	FilterPresetBar,
+	FilterPresetModalManager,
+} from "~/components/common/filter-presets";
 import {
 	CollectionsFilter,
 	DebouncedSearchInput,
 	FiltersModal,
 } from "~/components/common/filters";
+import type { FilterUpdateFunction } from "~/lib/hooks/filters/types";
+import { useFilterPresets } from "~/lib/hooks/filters/use-presets";
+import { useFiltersState } from "~/lib/hooks/filters/use-state";
 import { dayjsLib } from "~/lib/shared/date-utils";
 import {
 	useCoreDetails,
@@ -84,9 +98,9 @@ import { getExerciseDetailsPath } from "~/lib/shared/media-utils";
 import { clientGqlService, queryFactory } from "~/lib/shared/react-query";
 import {
 	convertEnumToSelectData,
-	isFilterChanged,
 	openConfirmationModal,
 } from "~/lib/shared/ui-utils";
+import { parseAsCollectionsFilter } from "~/lib/shared/validation";
 import { useBulkEditCollection } from "~/lib/state/collection";
 import {
 	addExerciseToCurrentWorkout,
@@ -99,35 +113,37 @@ import {
 	TOUR_EXERCISE_TARGET_ID,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
-import type { FilterUpdateFunction } from "~/lib/types";
 import { redirectWithToast, serverGqlService } from "~/lib/utilities.server";
 import type { Route } from "./+types/_dashboard.fitness.exercises.list";
 
-interface FilterState {
-	page: number;
-	query: string;
-	types: ExerciseLot[];
-	sortBy: ExerciseSortBy;
-	levels: ExerciseLevel[];
-	forces: ExerciseForce[];
-	muscles: ExerciseMuscle[];
-	mechanics: ExerciseMechanic[];
-	equipments: ExerciseEquipment[];
-	collections: MediaCollectionFilter[];
-}
-
-const defaultFilters: FilterState = {
-	page: 1,
-	query: "",
-	types: [],
-	forces: [],
-	levels: [],
-	muscles: [],
-	mechanics: [],
-	equipments: [],
-	collections: [],
-	sortBy: ExerciseSortBy.TimesPerformed,
+const defaultQueryState = {
+	page: parseAsInteger.withDefault(1),
+	query: parseAsString.withDefault(""),
+	collections: parseAsCollectionsFilter.withDefault([]),
+	types: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseLot)),
+	).withDefault([]),
+	sortBy: parseAsStringEnum(Object.values(ExerciseSortBy)).withDefault(
+		ExerciseSortBy.TimesPerformed,
+	),
+	levels: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseLevel)),
+	).withDefault([]),
+	forces: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseForce)),
+	).withDefault([]),
+	muscles: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseMuscle)),
+	).withDefault([]),
+	mechanics: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseMechanic)),
+	).withDefault([]),
+	equipments: parseAsArrayOf(
+		parseAsStringEnum(Object.values(ExerciseEquipment)),
+	).withDefault([]),
 };
+
+type FilterState = inferParserType<typeof defaultQueryState>;
 
 export const meta = () => {
 	return [{ title: "Exercises | Ryot" }];
@@ -169,31 +185,44 @@ export default function Page() {
 	const [mergingExercise, setMergingExercise] = useMergingExercise();
 	const [selectedExercises, setSelectedExercises] =
 		useListState<SelectExercise>([]);
-	const [filters, setFilters] = useLocalStorage(
-		"ExerciseListFilters",
-		defaultFilters,
-	);
+	const { filters, resetFilters, updateFilters, haveFiltersChanged } =
+		useFiltersState(defaultQueryState);
+
 	const [
 		filtersModalOpened,
 		{ open: openFiltersModal, close: closeFiltersModal },
+	] = useDisclosure(false);
+	const [
+		presetModalOpened,
+		{ open: openPresetModal, close: closePresetModal },
 	] = useDisclosure(false);
 
 	const bulkEditingState =
 		bulkEditingCollection.state === false ? null : bulkEditingCollection.state;
 
-	const queryInput: UserExercisesListInput = {
-		sortBy: filters.sortBy,
-		search: { page: filters.page, query: filters.query },
-		filter: {
-			types: filters.types,
-			levels: filters.levels,
-			forces: filters.forces,
-			muscles: filters.muscles,
-			mechanics: filters.mechanics,
-			equipments: filters.equipments,
-			collections: filters.collections,
-		},
-	};
+	const listPresets = useFilterPresets({
+		filters,
+		updateFilters,
+		enabled: true,
+		contextType: FilterPresetContextType.ExercisesList,
+	});
+
+	const queryInput: UserExercisesListInput = useMemo(
+		() => ({
+			sortBy: filters.sortBy,
+			search: { page: filters.page, query: filters.query },
+			filter: {
+				types: filters.types,
+				levels: filters.levels,
+				forces: filters.forces,
+				muscles: filters.muscles,
+				mechanics: filters.mechanics,
+				equipments: filters.equipments,
+				collections: filters.collections,
+			},
+		}),
+		[filters],
+	);
 
 	const { data: userExercisesList, refetch: refetchUserExercisesList } =
 		useQuery({
@@ -208,8 +237,6 @@ export default function Page() {
 		currentWorkout?.replacingExerciseIdx &&
 		currentWorkout.exercises[currentWorkout.replacingExerciseIdx].exerciseId;
 
-	const areListFiltersActive = isFilterChanged(filters, defaultFilters);
-
 	const { data: replacingExercise } = useExerciseDetails(
 		replacingExerciseId || "",
 		!!replacingExerciseId,
@@ -220,11 +247,14 @@ export default function Page() {
 		isFitnessActionActive &&
 		!isNumber(currentWorkout.replacingExerciseIdx);
 
-	const updateFilter: FilterUpdateFunction<FilterState> = (key, value) =>
-		setFilters((prev) => ({ ...prev, [key]: value }));
-
 	return (
 		<>
+			<FilterPresetModalManager
+				opened={presetModalOpened}
+				onClose={closePresetModal}
+				presetManager={listPresets}
+				placeholder="e.g., Push Day Machines"
+			/>
 			<BulkCollectionEditingAffix
 				bulkAddEntities={async () => {
 					if (bulkEditingState?.data.action !== "add") return [];
@@ -264,10 +294,7 @@ export default function Page() {
 						<DebouncedSearchInput
 							value={filters.query}
 							placeholder="Search for exercises by name or instructions"
-							onChange={(value) => {
-								updateFilter("query", value);
-								updateFilter("page", 1);
-							}}
+							onChange={(value) => updateFilters({ query: value })}
 							tourControl={{
 								target: OnboardingTourStepTargets.SearchForExercise,
 								onQueryChange: (query) => {
@@ -279,18 +306,23 @@ export default function Page() {
 						/>
 						<ActionIcon
 							onClick={openFiltersModal}
-							color={areListFiltersActive ? "blue" : "gray"}
+							color={haveFiltersChanged ? "blue" : "gray"}
 						>
 							<IconFilter size={24} />
 						</ActionIcon>
 						<FiltersModal
+							resetFilters={resetFilters}
 							opened={filtersModalOpened}
+							onSavePreset={openPresetModal}
 							closeFiltersModal={closeFiltersModal}
-							resetFilters={() => setFilters(defaultFilters)}
 						>
-							<FiltersModalForm filter={filters} updateFilter={updateFilter} />
+							<FiltersModalForm
+								filter={filters}
+								updateFilter={(key, value) => updateFilters({ [key]: value })}
+							/>
 						</FiltersModal>
 					</Group>
+					<FilterPresetBar presetManager={listPresets} />
 					{currentWorkout?.replacingExerciseIdx ? (
 						<Alert icon={<IconAlertCircle />}>
 							You are replacing exercise: {replacingExercise?.name}
@@ -345,7 +377,7 @@ export default function Page() {
 							)}
 							<ApplicationPagination
 								value={filters.page}
-								onChange={(v) => updateFilter("page", v)}
+								onChange={(page) => updateFilters({ page })}
 								totalItems={userExercisesList.response.details.totalItems}
 							/>
 						</>
@@ -394,43 +426,46 @@ const FiltersModalForm = (props: {
 			<Select
 				size="xs"
 				label="Sort by"
-				defaultValue={props.filter.sortBy}
+				value={props.filter.sortBy}
 				data={convertEnumToSelectData(ExerciseSortBy)}
 				onChange={(v) => props.updateFilter("sortBy", v as ExerciseSortBy)}
 			/>
 			<Stack gap={2}>
-				{Object.keys(defaultFilters)
-					.filter(
-						(f) => !["sortBy", "collections", "page", "query"].includes(f),
-					)
-					.map((f) => {
-						const singularKey = f.endsWith("s") ? f.slice(0, -1) : f;
-						return (
-							<MultiSelect
-								key={f}
-								size="xs"
-								clearable
-								searchable
-								label={startCase(f)}
+				{[
+					"types",
+					"levels",
+					"forces",
+					"muscles",
+					"mechanics",
+					"equipments",
+				].map((f) => {
+					const singularKey = f.endsWith("s") ? f.slice(0, -1) : f;
+					return (
+						<MultiSelect
+							key={f}
+							size="xs"
+							clearable
+							searchable
+							label={startCase(f)}
+							// biome-ignore lint/suspicious/noExplicitAny: required here
+							value={(props.filter as any)[f]}
+							onChange={(v) =>
 								// biome-ignore lint/suspicious/noExplicitAny: required here
-								value={(props.filter as any)[f]}
-								onChange={(v) =>
-									// biome-ignore lint/suspicious/noExplicitAny: required here
-									props.updateFilter(f as keyof FilterState, v as any)
-								}
+								props.updateFilter(f as keyof FilterState, v as any)
+							}
+							// biome-ignore lint/suspicious/noExplicitAny: required here
+							data={(coreDetails.exerciseParameters.filters as any)[
+								singularKey
+							].map(
 								// biome-ignore lint/suspicious/noExplicitAny: required here
-								data={(coreDetails.exerciseParameters.filters as any)[
-									singularKey
-								].map(
-									// biome-ignore lint/suspicious/noExplicitAny: required here
-									(v: any) => ({
-										value: v,
-										label: startCase(snakeCase(v)),
-									}),
-								)}
-							/>
-						);
-					})}
+								(v: any) => ({
+									value: v,
+									label: startCase(snakeCase(v)),
+								}),
+							)}
+						/>
+					);
+				})}
 			</Stack>
 			<Divider mt="md" mb="xs" />
 			<CollectionsFilter

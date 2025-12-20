@@ -12,6 +12,7 @@ import {
 	TextInput,
 	Title,
 } from "@mantine/core";
+import { hasLength, useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
@@ -192,9 +193,7 @@ const UserActions = (props: {
 			invalidateUsersList();
 			const isCurrentUser = input.userId === userDetails.id;
 			showSuccessNotification("User status updated successfully");
-			if (isCurrentUser && input.isDisabled) {
-				handleCurrentUserLogout(navigate);
-			}
+			if (isCurrentUser && input.isDisabled) handleCurrentUserLogout(navigate);
 		},
 		onError: () => showErrorNotification("Failed to update user status"),
 	});
@@ -246,9 +245,8 @@ const UserActions = (props: {
 			} else {
 				showSuccessNotification("User password reset successfully");
 			}
-			if (isCurrentUser && resetUser.passwordChangeUrl) {
+			if (isCurrentUser && resetUser.passwordChangeUrl)
 				handleCurrentUserLogout(navigate, resetUser.passwordChangeUrl);
-			}
 		},
 	});
 
@@ -383,31 +381,26 @@ const UserInvitationModal = (props: {
 	onClose: () => void;
 	onSuccess: (data: UrlDisplayData) => void;
 }) => {
-	const [username, setUsername] = useState("");
+	const form = useForm({
+		mode: "uncontrolled",
+		initialValues: { username: "" },
+		validate: { username: hasLength({ min: 1 }, "Username is required") },
+	});
 
 	const handleClose = () => {
-		setUsername("");
+		form.reset();
 		props.onClose();
-	};
-
-	const handleCreateInvitation = () => {
-		if (username.trim()) {
-			createInvitationMutation.mutate(username.trim());
-		}
 	};
 
 	const createInvitationMutation = useMutation({
 		mutationFn: async (username: string) => {
 			const { registerUser } = await clientGqlService.request(
 				RegisterUserDocument,
-				{
-					input: { data: { password: { username, password: "" } } },
-				},
+				{ input: { data: { password: { username, password: "" } } } },
 			);
 
-			if (registerUser.__typename !== "StringIdObject") {
+			if (registerUser.__typename !== "StringIdObject")
 				throw new Error("Failed to register user");
-			}
 
 			const { getPasswordChangeSession } = await clientGqlService.request(
 				GetPasswordChangeSessionDocument,
@@ -437,24 +430,25 @@ const UserInvitationModal = (props: {
 			onClose={handleClose}
 			title="Create User Invitation"
 		>
-			<Stack>
-				<TextInput
-					required
-					autoFocus
-					value={username}
-					label="Username"
-					onChange={(e) => setUsername(e.currentTarget.value)}
-				/>
-				{!createInvitationMutation.data && (
-					<Button
-						disabled={!username.trim()}
-						onClick={handleCreateInvitation}
-						loading={createInvitationMutation.isPending}
-					>
-						Create Invitation
-					</Button>
-				)}
-			</Stack>
+			<form
+				onSubmit={form.onSubmit((values) => {
+					createInvitationMutation.mutate(values.username.trim());
+				})}
+			>
+				<Stack>
+					<TextInput
+						required
+						data-autofocus
+						label="Username"
+						{...form.getInputProps("username")}
+					/>
+					{!createInvitationMutation.data && (
+						<Button type="submit" loading={createInvitationMutation.isPending}>
+							Create Invitation
+						</Button>
+					)}
+				</Stack>
+			</form>
 		</Modal>
 	);
 };

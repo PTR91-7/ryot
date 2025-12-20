@@ -26,7 +26,6 @@ import type { ExtendedBodyPart } from "@mjcdev/react-body-highlighter";
 import {
 	EntityLot,
 	ExerciseSource,
-	UpdateUserExerciseSettingsDocument,
 	WorkoutSetPersonalBest,
 } from "@ryot/generated/graphql/backend/graphql";
 import {
@@ -47,8 +46,7 @@ import {
 	IconTrophy,
 	IconUser,
 } from "@tabler/icons-react";
-import { useMutation } from "@tanstack/react-query";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { Link, useLoaderData, useNavigate } from "react-router";
 import { Virtuoso } from "react-virtuoso";
 import { $path } from "safe-routes";
@@ -84,7 +82,6 @@ import {
 	useUserPreferences,
 	useUserUnitSystem,
 } from "~/lib/shared/hooks";
-import { clientGqlService } from "~/lib/shared/react-query";
 import { convertEnumToSelectData } from "~/lib/shared/ui-utils";
 import {
 	addExerciseToCurrentWorkout,
@@ -160,24 +157,6 @@ export default function Page() {
 	const [bodyViewGender, setBodyViewGender] = useLocalStorage<
 		"male" | "female"
 	>("ExerciseBodyViewGender", "female");
-	const [changingExerciseSettings, setChangingExerciseSettings] = useState({
-		isChanged: false,
-		value: userExerciseDetails?.details?.exerciseExtraInformation?.settings || {
-			excludeFromAnalytics: false,
-			setRestTimers: {},
-		},
-	});
-
-	const updateUserExerciseSettingsMutation = useMutation({
-		mutationFn: async () => {
-			await clientGqlService.request(UpdateUserExerciseSettingsDocument, {
-				input: {
-					exerciseId: exerciseDetails?.id || "",
-					change: changingExerciseSettings.value,
-				},
-			});
-		},
-	});
 
 	const computedDateAfterForCharts = getDateFromTimeSpan(timeSpanForCharts);
 	const filteredHistoryForCharts = sortBy(
@@ -214,21 +193,19 @@ export default function Page() {
 	return (
 		<>
 			<ExerciseUpdatePreferencesModal
+				exerciseId={exerciseDetails.id}
+				exerciseLot={exerciseDetails.lot}
 				opened={updatePreferencesModalOpened}
 				onClose={closeUpdatePreferencesModal}
-				userExerciseDetails={userExerciseDetails}
-				changingExerciseSettings={changingExerciseSettings}
-				setChangingExerciseSettings={setChangingExerciseSettings}
-				updateUserExerciseSettingsMutation={updateUserExerciseSettingsMutation}
 			/>
 			<ExerciseMusclesModal
 				opened={musclesModalOpened}
 				onClose={closeMusclesModal}
 				bodyViewSide={bodyViewSide}
-				setBodyViewSide={setBodyViewSide}
-				bodyViewGender={bodyViewGender}
-				setBodyViewGender={setBodyViewGender}
 				bodyPartsData={bodyPartsData}
+				bodyViewGender={bodyViewGender}
+				setBodyViewSide={setBodyViewSide}
+				setBodyViewGender={setBodyViewGender}
 			/>
 			<Container size="xs" px="lg">
 				<Stack>
@@ -239,8 +216,8 @@ export default function Page() {
 								<DisplayCollectionToEntity
 									col={col}
 									key={col.id}
-									entityLot={EntityLot.Exercise}
 									entityId={exerciseDetails.id}
+									entityLot={EntityLot.Exercise}
 								/>
 							))}
 						</Group>
@@ -455,6 +432,7 @@ export default function Page() {
 																	set={pbSet}
 																	key={pbSet.workoutId}
 																	personalBestLot={personalBest.lot}
+																	exerciseId={loaderData.exerciseId}
 																/>
 															))}
 														</Box>
@@ -561,6 +539,17 @@ export default function Page() {
 										}}
 									>
 										Post a review
+									</Button>
+									<Button
+										component={Link}
+										variant="outline"
+										to={$path(
+											"/fitness/exercises/update/:action",
+											{ action: "create" },
+											{ duplicateId: exerciseDetails.id },
+										)}
+									>
+										Duplicate exercise
 									</Button>
 									{canCurrentUserUpdate ? (
 										<Button

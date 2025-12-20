@@ -21,6 +21,8 @@ fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) ->
     match key {
         ApplicationCacheKey::UserTwoFactorRateLimit { .. } => Duration::seconds(5),
 
+        ApplicationCacheKey::LogDownloadToken { .. } => Duration::minutes(1),
+
         ApplicationCacheKey::SpotifyAccessToken => Duration::minutes(50),
 
         ApplicationCacheKey::CoreDetails
@@ -70,7 +72,9 @@ fn get_expiry_for_key(ss: &Arc<SupportingService>, key: &ApplicationCacheKey) ->
         ApplicationCacheKey::TvdbSettings
         | ApplicationCacheKey::UserPasswordChangeSession { .. } => Duration::days(7),
 
-        ApplicationCacheKey::MetadataProgressUpdateInProgressCache { .. } => Duration::days(60),
+        ApplicationCacheKey::UserFilterPresets { .. }
+        | ApplicationCacheKey::UserEntityTranslations { .. }
+        | ApplicationCacheKey::MetadataProgressUpdateInProgressCache { .. } => Duration::days(60),
 
         ApplicationCacheKey::UserSession { .. } => {
             Duration::days(ss.config.users.token_valid_for_days.into())

@@ -34,6 +34,11 @@ mod m20250907_changes_for_issue_1533;
 mod m20250908_changes_for_issue_1551;
 mod m20250914_changes_for_issue_1561;
 mod m20251021_changes_for_issue_1583;
+mod m20251115_create_filter_preset;
+mod m20251127_changes_for_issue_684;
+mod m20251128_create_entity_translation;
+mod m20251201_changes_for_issue_1642;
+mod m20251212_is_last_v9_migration;
 
 pub struct Migrator;
 
@@ -74,6 +79,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20250908_changes_for_issue_1551::Migration),
             Box::new(m20250914_changes_for_issue_1561::Migration),
             Box::new(m20251021_changes_for_issue_1583::Migration),
+            Box::new(m20251115_create_filter_preset::Migration),
+            Box::new(m20251127_changes_for_issue_684::Migration),
+            Box::new(m20251128_create_entity_translation::Migration),
+            Box::new(m20251201_changes_for_issue_1642::Migration),
+            Box::new(m20251212_is_last_v9_migration::Migration),
         ]
     }
 }

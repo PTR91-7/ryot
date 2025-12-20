@@ -5,22 +5,27 @@ import { useEffect, useState } from "react";
 import { useLocalStorage } from "usehooks-ts";
 import { useUserDetails } from "~/lib/shared/hooks";
 import type { Exercise } from "~/lib/state/fitness";
-import { BulkDeleteDrawer } from "./bulk-delete-drawer";
+import { BulkDeleteModal } from "./bulk-delete-modal";
 import { UploadAssetsModal } from "./miscellaneous";
 import { ReorderDrawer } from "./reorder";
 import { DisplaySupersetModal } from "./supersets";
 import { TimerAndStopwatchDrawer } from "./timer-and-stopwatch-drawer";
 import type { FuncStartTimer } from "./types";
 
+const useNotificationPermissionAsked = () => {
+	const userDetails = useUserDetails();
+	return useLocalStorage(
+		`HasAskedForNotificationPermission-${userDetails.id}`,
+		false,
+	);
+};
+
 const NotificationPermissionModal = (props: {
 	opened: boolean;
 	onClose: () => void;
 }) => {
-	const userDetails = useUserDetails();
-	const [, setHasAskedForNotificationPermission] = useLocalStorage(
-		`HasAskedForNotificationPermission-${userDetails.id}`,
-		false,
-	);
+	const [, setHasAskedForNotificationPermission] =
+		useNotificationPermissionAsked();
 
 	const handleClose = () => {
 		setHasAskedForNotificationPermission(true);
@@ -75,9 +80,9 @@ interface ModalsProps {
 	closeTimerDrawer: () => void;
 	toggleTimerDrawer: () => void;
 	pauseOrResumeTimer: () => void;
-	bulkDeleteDrawerOpened: boolean;
+	bulkDeleteModalOpened: boolean;
 	notificationModalOpened: boolean;
-	closeBulkDeleteDrawer: () => void;
+	closeBulkDeleteModal: () => void;
 	closeNotificationModal: () => void;
 	currentWorkoutExercises?: Array<Exercise>;
 	exerciseToDelete: string | null | undefined;
@@ -103,9 +108,9 @@ export const WorkoutModals = (props: ModalsProps) => (
 			modalOpenedBy={props.assetsModalOpened}
 			closeModal={() => props.setAssetsModalOpened(undefined)}
 		/>
-		<BulkDeleteDrawer
-			opened={props.bulkDeleteDrawerOpened}
-			onClose={props.closeBulkDeleteDrawer}
+		<BulkDeleteModal
+			opened={props.bulkDeleteModalOpened}
+			onClose={props.closeBulkDeleteModal}
 			exerciseToDelete={props.exerciseToDelete}
 		/>
 		<ReorderDrawer
@@ -125,7 +130,6 @@ export const WorkoutModals = (props: ModalsProps) => (
 );
 
 export function useWorkoutModals() {
-	const userDetails = useUserDetails();
 	const [assetsModalOpened, setAssetsModalOpened] = useState<
 		string | null | undefined
 	>(undefined);
@@ -144,10 +148,7 @@ export function useWorkoutModals() {
 	const [supersetWithExerciseIdentifier, setSupersetModalOpened] = useState<
 		string | null
 	>(null);
-	const [hasAskedForNotificationPermission] = useLocalStorage(
-		`HasAskedForNotificationPermission-${userDetails.id}`,
-		false,
-	);
+	const [hasAskedForNotificationPermission] = useNotificationPermissionAsked();
 	const [notificationModalOpened, setNotificationModalOpened] = useState(false);
 
 	useEffect(() => {
@@ -160,7 +161,7 @@ export function useWorkoutModals() {
 		}
 	}, [hasAskedForNotificationPermission]);
 
-	const openBulkDeleteDrawer = (exerciseIdentifier: string | null) => {
+	const openBulkDeleteModal = (exerciseIdentifier: string | null) => {
 		setExerciseToDelete(exerciseIdentifier);
 		if (!exerciseIdentifier) return;
 		setTimeout(() => {
@@ -168,7 +169,7 @@ export function useWorkoutModals() {
 		}, 4000);
 	};
 
-	const closeBulkDeleteDrawer = () => {
+	const closeBulkDeleteModal = () => {
 		setExerciseToDelete(undefined);
 	};
 
@@ -192,15 +193,15 @@ export function useWorkoutModals() {
 		assetsModalOpened,
 		timerDrawerOpened,
 		openReorderDrawer,
+		openBulkDeleteModal,
+		closeBulkDeleteModal,
 		setAssetsModalOpened,
-		openBulkDeleteDrawer,
-		closeBulkDeleteDrawer,
 		isReorderDrawerOpened,
 		setSupersetModalOpened,
 		closeNotificationModal,
 		notificationModalOpened,
 		setIsReorderDrawerOpened,
 		supersetWithExerciseIdentifier,
-		bulkDeleteDrawerOpened: exerciseToDelete !== undefined,
+		bulkDeleteModalOpened: exerciseToDelete !== undefined,
 	};
 }
