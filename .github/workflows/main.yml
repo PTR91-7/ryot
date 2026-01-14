@@ -193,11 +193,12 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-          DOCKER_BUILD_RECORD_UPLOAD: false
       - name: Download build artifact for docker
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           path: ${{ github.workspace }}/artifact/
+          pattern: !*.dockerbuild
+          DOCKER_BUILD_RECORD_UPLOAD: false
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
       - name: Set up Docker Buildx
