@@ -49,7 +49,7 @@ import {
 	IconZzz,
 } from "@tabler/icons-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { Form, Link, data, useLoaderData } from "react-router";
+import { data, Form, Link, useLoaderData } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -708,7 +708,7 @@ const ConsumedMetadataDisplay = (props: {
 	return (
 		<Link to={$path("/media/item/:id", { id: props.metadataId })}>
 			<Tooltip label={metadataTranslations?.title || metadataDetails?.title}>
-				<Avatar src={images.at(0)} />
+				<Avatar src={metadataTranslations?.image || images.at(0)} />
 			</Tooltip>
 		</Link>
 	);

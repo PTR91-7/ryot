@@ -1,4 +1,4 @@
-import { Box, Flex, NumberInput, Text, rem } from "@mantine/core";
+import { Box, Flex, NumberInput, rem, Text } from "@mantine/core";
 import { useDebouncedState, useDidUpdate } from "@mantine/hooks";
 import {
 	ExerciseDurationUnit,
@@ -16,7 +16,7 @@ import { useCurrentWorkout, useGetSetAtIndex } from "~/lib/state/fitness";
 import {
 	ACTIVE_WORKOUT_REPS_TARGET,
 	ACTIVE_WORKOUT_WEIGHT_TARGET,
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 
@@ -79,12 +79,12 @@ export const StatInput = (props: {
 
 	const weightStepTourClassName =
 		props.stat === "weight" && props.setIdx === 0
-			? OnboardingTourStepTargets.AddWeightToExercise
+			? OnboardingTourStepTarget.AddWeightToExercise
 			: undefined;
 
 	const repsStepTourClassName =
 		props.stat === "reps" && props.setIdx === 0
-			? OnboardingTourStepTargets.AddRepsToExercise
+			? OnboardingTourStepTarget.AddRepsToExercise
 			: undefined;
 
 	useDidUpdate(() => {

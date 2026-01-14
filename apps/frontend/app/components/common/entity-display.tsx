@@ -53,7 +53,7 @@ import {
 	useReviewEntity,
 } from "~/lib/state/media";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import classes from "~/styles/common.module.css";
@@ -127,9 +127,7 @@ const formatBaseEntityDisplayItemRating = (
 	}
 };
 
-const BaseEntityDisplayItemReason = (props: {
-	reason: UserToMediaReason;
-}) => {
+const BaseEntityDisplayItemReason = (props: { reason: UserToMediaReason }) => {
 	const [Icon, color] = match(props.reason)
 		.with(
 			UserToMediaReason.Owned,
@@ -222,7 +220,7 @@ const ActionButtons = memo((props: ActionButtonsProps) => {
 					consumeButtonIndicatorLabel={props.consumeButtonIndicatorLabel}
 					className={
 						props.isFirstItem
-							? OnboardingTourStepTargets.OpenMetadataProgressForm
+							? OnboardingTourStepTarget.OpenMetadataProgressForm
 							: undefined
 					}
 				/>

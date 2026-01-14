@@ -17,8 +17,8 @@ import {
 	usePlayFitnessSound,
 } from "~/components/routes/fitness.action/hooks";
 import {
-	WorkoutModals,
 	useWorkoutModals,
+	WorkoutModals,
 } from "~/components/routes/fitness.action/modals";
 import { handleSetConfirmation } from "~/components/routes/fitness.action/set-display/functions";
 import type { FuncStartTimer } from "~/components/routes/fitness.action/types";
@@ -35,7 +35,7 @@ import {
 	useMeasurementsDrawer,
 } from "~/lib/state/fitness";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { FitnessAction } from "~/lib/types";
@@ -343,11 +343,18 @@ export default function Page() {
 									<Button
 										component={Link}
 										variant="subtle"
-										onClick={() => advanceOnboardingTourStep()}
 										to={$path("/fitness/exercises/list")}
 										className={
-											OnboardingTourStepTargets.ClickOnAddAnExerciseButton
+											OnboardingTourStepTarget.ClickOnAddAnExerciseButton
 										}
+										onClick={() => {
+											setCurrentWorkout(
+												produce(currentWorkout, (draft) => {
+													draft.replacingExerciseIdx = undefined;
+												}),
+											);
+											advanceOnboardingTourStep();
+										}}
 									>
 										Add an exercise
 									</Button>

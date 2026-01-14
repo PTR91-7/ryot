@@ -71,9 +71,6 @@ pub async fn perform_hp_application_job(
         HpApplicationJob::SyncUserIntegrationsData(user_id) => {
             sync_user_integrations_data(&ss, &user_id).await
         }
-        HpApplicationJob::BulkMetadataProgressUpdate(user_id, input) => {
-            bulk_metadata_progress_update(&ss, &user_id, input).await
-        }
         HpApplicationJob::RecalculateUserActivitiesAndSummary(
             user_id,
             calculate_from_beginning,
@@ -109,26 +106,22 @@ pub async fn perform_mp_application_job(
         MpApplicationJob::UpdateMediaTranslations(user_id, input) => {
             update_media_translation(&ss, &user_id, input).await
         }
-        MpApplicationJob::ImportFromExternalSource(user_id, input) => {
-            perform_import(&ss, user_id, input).await
-        }
-        MpApplicationJob::UpdateMediaDetails(input) => match input.entity_lot {
-            EntityLot::Metadata => update_metadata_and_notify_users(&input.entity_id, &ss)
-                .await
-                .map(|_| ()),
-            EntityLot::Person => update_person_and_notify_users(&input.entity_id, &ss)
-                .await
-                .map(|_| ()),
-            EntityLot::MetadataGroup => {
-                update_metadata_group_and_notify_users(&input.entity_id, &ss)
-                    .await
-                    .map(|_| ())
+        MpApplicationJob::UpdateMediaDetails(input) => {
+            macro_rules! update_media {
+                ($update_fn:ident) => {
+                    $update_fn(&input.entity_id, &ss).await.map(|_| ())
+                };
             }
-            _ => Err(anyhow!(
-                "Type {:?} not supported for update",
-                input.entity_lot
-            )),
-        },
+            match input.entity_lot {
+                EntityLot::Person => update_media!(update_person_and_notify_users),
+                EntityLot::Metadata => update_media!(update_metadata_and_notify_users),
+                EntityLot::MetadataGroup => update_media!(update_metadata_group_and_notify_users),
+                _ => Err(anyhow!(
+                    "Type {:?} not supported for update",
+                    input.entity_lot
+                )),
+            }
+        }
     };
     ryot_log!(trace, "Finished job {:?}", name);
     status.map_err(|e| Error::Failed(Arc::new(e.to_string().into())))
@@ -164,6 +157,12 @@ pub async fn perform_single_application_job(
     let name = information.to_string();
     ryot_log!(trace, "Started job {:?}", information);
     let status = match information {
+        SingleApplicationJob::ImportFromExternalSource(user_id, input) => {
+            perform_import(&ss, user_id, input).await
+        }
+        SingleApplicationJob::BulkMetadataProgressUpdate(user_id, input) => {
+            bulk_metadata_progress_update(&ss, &user_id, input).await
+        }
         SingleApplicationJob::ProcessIntegrationWebhook(integration_slug, payload) => {
             process_integration_webhook(&ss, integration_slug, payload)
                 .await

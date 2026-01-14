@@ -23,9 +23,9 @@ import {
 	type UserTemplatesOrWorkoutsListInput,
 	UserTemplatesOrWorkoutsListSortBy,
 	UserWorkoutDetailsDocument,
+	UserWorkoutsListDocument,
 	UserWorkoutTemplateDetailsDocument,
 	UserWorkoutTemplatesListDocument,
-	UserWorkoutsListDocument,
 	type WorkoutSummary,
 } from "@ryot/generated/graphql/backend/graphql";
 import { changeCase, humanizeDuration, truncate } from "@ryot/ts-utils";
@@ -89,7 +89,7 @@ import { convertEnumToSelectData } from "~/lib/shared/ui-utils";
 import { useBulkEditCollection } from "~/lib/state/collection";
 import { getDefaultWorkout } from "~/lib/state/fitness";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { FitnessAction, FitnessEntity } from "~/lib/types";
@@ -237,7 +237,7 @@ export default function Page(props: { params: { entity: FitnessEntity } }) {
 						<ActionIcon
 							color="green"
 							variant="outline"
-							className={OnboardingTourStepTargets.AddNewWorkout}
+							className={OnboardingTourStepTarget.AddNewWorkout}
 							onClick={async () => {
 								if (
 									!coreDetails.isServerKeyValidated &&
@@ -397,7 +397,7 @@ const DisplayFitnessEntity = (props: {
 	const personalBestsAchieved =
 		entityInformation.summary.total?.personalBestsAchieved || 0;
 	const repsData = (entityInformation.information.exercises || [])
-		.map((e) => Number.parseInt(e.total?.reps || "0"))
+		.map((e) => Number.parseInt(e.total?.reps || "0", 10))
 		.filter(Boolean);
 
 	return (

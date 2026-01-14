@@ -1,5 +1,4 @@
 import { reactRouter } from "@react-router/dev/vite";
-import { reactRouterDevTools } from "react-router-devtools";
 import { safeRoutes } from "safe-routes/vite";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -9,11 +8,10 @@ export default defineConfig({
 	server: {
 		host: process.env.FRONTEND_HOST,
 		port: process.env.FRONTEND_PORT
-			? Number.parseInt(process.env.FRONTEND_PORT)
+			? Number.parseInt(process.env.FRONTEND_PORT, 10)
 			: undefined,
 	},
 	plugins: [
-		reactRouterDevTools(),
 		reactRouter(),
 		safeRoutes(),
 		tsconfigPaths({ ignoreConfigErrors: true }),

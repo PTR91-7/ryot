@@ -9,9 +9,9 @@ import { useMemo } from "react";
 import { useUserPreferences } from "~/lib/shared/hooks";
 import { queryClient } from "~/lib/shared/react-query";
 import {
-	type InProgressWorkout,
 	getExerciseDetailsQuery,
 	getUserExerciseDetailsQuery,
+	type InProgressWorkout,
 	useCurrentWorkout,
 } from "~/lib/state/fitness";
 import { DEFAULT_SET_TIMEOUT_DELAY_MS } from "./utils";
@@ -22,6 +22,14 @@ export const focusOnExercise = (idx: number) => {
 		exercise?.scrollIntoView({ behavior: "smooth" });
 	}, DEFAULT_SET_TIMEOUT_DELAY_MS);
 };
+
+export const sortSupersetExercisesByWorkoutOrder = (
+	supersetExercises: string[],
+	workoutExercises: InProgressWorkout["exercises"],
+) =>
+	sortBy(supersetExercises, (s) =>
+		workoutExercises.findIndex((e) => e.identifier === s),
+	);
 
 export const getProgressOfExercise = (cw: InProgressWorkout, index: number) => {
 	const isCompleted = cw.exercises[index].sets.every((s) => s.confirmedAt);
@@ -43,8 +51,9 @@ const getNextSetInWorkout = (
 	);
 	const areAllSetsConfirmed = currentExercise.sets.every((s) => s.confirmedAt);
 	if (partOfSuperset) {
-		const sortedExercises = sortBy(partOfSuperset.exercises, (s) =>
-			currentWorkout.exercises.findIndex((e) => e.identifier === s),
+		const sortedExercises = sortSupersetExercisesByWorkoutOrder(
+			partOfSuperset.exercises,
+			currentWorkout.exercises,
 		);
 		const nextExerciseWithIncompleteSets = currentWorkout.exercises.find(
 			(e) =>
@@ -122,7 +131,7 @@ export const usePerformTasksAfterSetConfirmed = () => {
 		const userExerciseDetails = await queryClient.ensureQueryData(
 			getUserExerciseDetailsQuery(exerciseId),
 		);
-		let exerciseIdxToFocusOn = undefined;
+		let exerciseIdxToFocusOn: number | undefined;
 		setCurrentWorkout((cw) =>
 			produce(cw, (draft) => {
 				if (!draft) return;

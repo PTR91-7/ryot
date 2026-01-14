@@ -613,6 +613,7 @@ export type DeployImportJobInput = {
 };
 
 export type DeployJellyfinImportInput = {
+  allowInsecureConnections?: InputMaybe<Scalars['Boolean']['input']>;
   apiUrl: Scalars['String']['input'];
   password?: InputMaybe<Scalars['String']['input']>;
   username: Scalars['String']['input'];
@@ -665,6 +666,7 @@ export type DeployTraktImportListInput = {
 };
 
 export type DeployUrlAndKeyImportInput = {
+  allowInsecureConnections?: InputMaybe<Scalars['Boolean']['input']>;
   apiKey: Scalars['String']['input'];
   apiUrl: Scalars['String']['input'];
 };
@@ -734,6 +736,7 @@ export type EntityToCollectionInput = {
 export type EntityTranslationDetails = {
   __typename?: 'EntityTranslationDetails';
   description?: Maybe<Scalars['String']['output']>;
+  image?: Maybe<Scalars['String']['output']>;
   title?: Maybe<Scalars['String']['output']>;
 };
 
@@ -2064,6 +2067,7 @@ export type NotificationPlatform = {
 export enum NotificationPlatformLot {
   Apprise = 'APPRISE',
   Discord = 'DISCORD',
+  Email = 'EMAIL',
   Gotify = 'GOTIFY',
   Ntfy = 'NTFY',
   PushBullet = 'PUSH_BULLET',
@@ -2989,15 +2993,21 @@ export type UserFitnessPreferencesInput = {
 
 export type UserGeneralDashboardElement = {
   __typename?: 'UserGeneralDashboardElement';
+  /** Applies to only upcoming section */
   deduplicateMedia?: Maybe<Scalars['Boolean']['output']>;
   hidden: Scalars['Boolean']['output'];
+  /** Applies to only upcoming section */
+  numDaysAhead?: Maybe<Scalars['Int']['output']>;
   numElements?: Maybe<Scalars['Int']['output']>;
   section: DashboardElementLot;
 };
 
 export type UserGeneralDashboardElementInput = {
+  /** Applies to only upcoming section */
   deduplicateMedia?: InputMaybe<Scalars['Boolean']['input']>;
   hidden: Scalars['Boolean']['input'];
+  /** Applies to only upcoming section */
+  numDaysAhead?: InputMaybe<Scalars['Int']['input']>;
   numElements?: InputMaybe<Scalars['Int']['input']>;
   section: DashboardElementLot;
 };

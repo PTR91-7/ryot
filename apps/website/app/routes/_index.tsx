@@ -1,14 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { TTLCache } from "@isaacs/ttlcache";
-import ContactSubmissionEmail from "@ryot/transactional/emails/ContactSubmission";
-import LoginCodeEmail from "@ryot/transactional/emails/LoginCode";
-import {
-	cn,
-	getActionIntent,
-	parseSearchQuery,
-	processSubmission,
-	zodBoolAsString,
-} from "@ryot/ts-utils";
+import ContactSubmissionEmail from "@ryot/transactional/emails/contact-submission";
+import LoginCodeEmail from "@ryot/transactional/emails/login-code";
+import { cn, getActionIntent, processSubmission } from "@ryot/ts-utils";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import { sql } from "drizzle-orm";
@@ -25,17 +19,8 @@ import {
 	Zap,
 } from "lucide-react";
 import * as openidClient from "openid-client";
-import { useState } from "react";
-import {
-	Form,
-	Link,
-	data,
-	redirect,
-	useLoaderData,
-	useRouteLoaderData,
-} from "react-router";
-import { HoneypotInputs } from "remix-utils/honeypot/react";
-import { SpamError } from "remix-utils/honeypot/server";
+import { useEffect, useState } from "react";
+import { data, Form, Link, redirect, useSearchParams } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withFragment, withQuery } from "ufo";
@@ -60,49 +45,29 @@ import {
 import { Textarea } from "~/lib/components/ui/textarea";
 import { TurnstileWidget } from "~/lib/components/ui/turnstile";
 import {
-	OAUTH_CALLBACK_URL,
-	db,
-	honeypot,
-	prices,
-	serverVariables,
+	getDb,
+	getOauthCallbackUrl,
 	websiteAuthCookie,
 } from "~/lib/config.server";
-import { contactEmail, startUrl } from "~/lib/constants";
+import {
+	contactEmail,
+	initializePaddleForApplication,
+	startUrl,
+	useConfigData,
+} from "~/lib/general";
 import {
 	getClientIp,
 	oauthConfig,
 	sendEmail,
 	verifyTurnstileToken,
 } from "~/lib/utilities.server";
-import type { loader as rootLoader } from "../root";
 import type { Route } from "./+types/_index";
 
 dayjs.extend(duration);
 
-const searchParamsSchema = z.object({
-	email: z.email().optional(),
-	contactSubmission: zodBoolAsString.optional(),
-});
-
-export type SearchParams = z.infer<typeof searchParamsSchema>;
-
-export const loader = async ({ request }: Route.LoaderArgs) => {
-	const query = parseSearchQuery(request, searchParamsSchema);
-	return {
-		query,
-		prices,
-		turnstileSiteKey: serverVariables.TURNSTILE_SITE_KEY,
-	};
-};
-
-export const headers = () => ({
-	"Cache-Control":
-		"public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
-});
-
 const otpCodesCache = new TTLCache<string, string>({
-	ttl: dayjs.duration(5, "minutes").asMilliseconds(),
 	max: 1000,
+	ttl: dayjs.duration(5, "minutes").asMilliseconds(),
 });
 
 const generateOtp = (length: number) => {
@@ -144,7 +109,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 			const otpCode = otpCodesCache.get(submission.email);
 			if (otpCode !== submission.otpCode)
 				throw data({ message: "Invalid OTP code." }, { status: 400 });
-			const dbCustomer = await db
+			const dbCustomer = await getDb()
 				.insert(customers)
 				.values({ email: submission.email })
 				.returning({ id: customers.id })
@@ -166,7 +131,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 			const config = await oauthConfig();
 			const redirectUrl = openidClient.buildAuthorizationUrl(config, {
 				scope: "openid email",
-				redirect_uri: OAUTH_CALLBACK_URL,
+				redirect_uri: getOauthCallbackUrl(),
 			});
 			return redirect(redirectUrl.href);
 		})
@@ -188,19 +153,13 @@ export const action = async ({ request }: Route.ActionArgs) => {
 				);
 			}
 
-			let isSpam = false;
-			try {
-				await honeypot.check(formData);
-			} catch (e) {
-				if (e instanceof SpamError) isSpam = true;
-			}
-			const result = await db
+			const result = await getDb()
 				.insert(contactSubmissions)
 				.values({
-					isSpam: isSpam,
+					isSpam: false,
 					email: submission.email,
 					message: submission.message,
-					ticketNumber: isSpam ? null : sql`nextval('ticket_number_seq')`,
+					ticketNumber: sql`nextval('ticket_number_seq')`,
 				})
 				.returning({
 					email: contactSubmissions.email,
@@ -208,7 +167,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 					ticketNumber: contactSubmissions.ticketNumber,
 				});
 
-			if (!isSpam && result[0]?.ticketNumber) {
+			if (result[0]?.ticketNumber) {
 				const insertedSubmission = result[0];
 				await sendEmail({
 					cc: contactEmail,
@@ -247,19 +206,36 @@ const contactSubmissionSchema = z
 const FEATURE_CARD_STYLES =
 	"border-2 rounded-xl hover:border-primary/20 transition-all duration-300 hover:shadow-lg";
 
+const stars = Array.from({ length: 5 }, (_, i) => `star-${i + 1}`);
+const mikeStars = Array.from({ length: 4 }, (_, i) => `mike-star-${i + 1}`);
+const alexStars = Array.from({ length: 4 }, (_, i) => `alex-star-${i + 1}`);
+
 export default function Page() {
-	const loaderData = useLoaderData<typeof loader>();
-	const rootLoaderData = useRouteLoaderData<typeof rootLoader>("root");
+	const [searchParams] = useSearchParams();
+	const { data: configData, isLoading } = useConfigData();
+
+	const query = {
+		email: searchParams.get("email") ?? undefined,
+		contactSubmission: searchParams.get("contactSubmission") === "true",
+	};
 
 	const [contactSubmissionTurnstileToken, setContactSubmissionTurnstileToken] =
 		useState<string>("");
 	const [loginOtpTurnstileToken, setLoginOtpTurnstileToken] =
 		useState<string>("");
 
+	useEffect(() => {
+		if (configData)
+			initializePaddleForApplication(
+				configData.clientToken,
+				configData.isSandbox,
+			);
+	}, [configData]);
+
 	return (
 		<>
 			<section className="relative py-20 lg:py-32 overflow-hidden">
-				<div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
+				<div className="absolute inset-0 bg-linear-to-br from-primary/5 via-transparent to-accent/5" />
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
 					<div className="grid lg:grid-cols-2 gap-12 items-center">
 						<div className="max-w-2xl">
@@ -295,7 +271,7 @@ export default function Page() {
 							</div>
 						</div>
 						<div className="relative">
-							<div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-accent/20 blur-3xl rounded-full" />
+							<div className="absolute inset-0 bg-linear-to-r from-primary/20 to-accent/20 blur-3xl rounded-full" />
 							<Image
 								src="/cta-image.png"
 								alt="Ryot Dashboard Interface showing media tracking capabilities"
@@ -392,9 +368,9 @@ export default function Page() {
 						<Card className="bg-card/50 backdrop-blur-sm">
 							<CardContent className="pt-6">
 								<div className="flex items-center mb-4">
-									{[...Array(5)].map((_, i) => (
+									{stars.map((star) => (
 										<Star
-											key={`star-5-${i}`}
+											key={star}
 											className="w-4 h-4 fill-yellow-400 text-yellow-400"
 										/>
 									))}
@@ -421,9 +397,9 @@ export default function Page() {
 						<Card className="bg-card/50 backdrop-blur-sm">
 							<CardContent className="pt-6">
 								<div className="flex items-center mb-4">
-									{[...Array(4)].map((_, i) => (
+									{mikeStars.map((star) => (
 										<Star
-											key={`mike-star-${i}`}
+											key={star}
 											className="w-4 h-4 fill-yellow-400 text-yellow-400"
 										/>
 									))}
@@ -454,9 +430,9 @@ export default function Page() {
 						<Card className="bg-card/50 backdrop-blur-sm">
 							<CardContent className="pt-6">
 								<div className="flex items-center mb-4">
-									{[...Array(4)].map((_, i) => (
+									{alexStars.map((star) => (
 										<Star
-											key={`alex-star-${i}`}
+											key={star}
 											className="w-4 h-4 fill-yellow-400 text-yellow-400"
 										/>
 									))}
@@ -498,7 +474,14 @@ export default function Page() {
 						difference Ryot can make.
 					</p>
 					<div className="max-w-sm mx-auto space-y-4">
-						{rootLoaderData?.isLoggedIn ? (
+						{isLoading || !configData ? (
+							<div className="text-center py-8">
+								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2" />
+								<p className="text-sm text-muted-foreground">
+									Loading registration form...
+								</p>
+							</div>
+						) : configData.isLoggedIn ? (
 							<Link to={$path("/me")}>
 								<Button size="lg" className="text-base px-8">
 									<PlayIcon size={16} className="mr-2" />
@@ -511,18 +494,16 @@ export default function Page() {
 									method="POST"
 									className="flex flex-col sm:flex-row gap-4 justify-center"
 									action={withQuery(".?index", {
-										intent: loaderData.query.email
-											? "registerWithEmail"
-											: "sendLoginCode",
+										intent: query.email ? "registerWithEmail" : "sendLoginCode",
 									})}
 								>
-									{loaderData.query.email ? (
+									{query.email ? (
 										<>
 											<input
 												readOnly
 												name="email"
 												type="hidden"
-												value={loaderData.query.email}
+												value={query.email}
 											/>
 											<InputOTP
 												maxLength={6}
@@ -570,7 +551,7 @@ export default function Page() {
 											</Button>
 											<TurnstileWidget
 												onSuccess={setLoginOtpTurnstileToken}
-												siteKey={loaderData.turnstileSiteKey}
+												siteKey={configData.turnstileSiteKey}
 												onError={() => setLoginOtpTurnstileToken("")}
 												onExpire={() => setLoginOtpTurnstileToken("")}
 											/>
@@ -630,10 +611,19 @@ export default function Page() {
 					</div>
 				</div>
 			</section>
-			<Pricing
-				prices={loaderData.prices}
-				isLoggedIn={rootLoaderData?.isLoggedIn}
-			/>
+			{isLoading || !configData ? (
+				<section className="py-20">
+					<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+						<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+						<p className="text-muted-foreground">Loading pricing...</p>
+					</div>
+				</section>
+			) : (
+				<Pricing
+					prices={configData.prices}
+					isLoggedIn={configData.isLoggedIn}
+				/>
+			)}
 
 			<section id="contact" className="py-20 bg-muted/30">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -650,7 +640,7 @@ export default function Page() {
 						</p>
 					</div>
 
-					{loaderData.query.contactSubmission ? (
+					{query.contactSubmission ? (
 						<Card className="max-w-2xl mx-auto border-2 rounded-xl">
 							<CardContent className="p-8 text-center">
 								<CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
@@ -662,6 +652,15 @@ export default function Page() {
 								</p>
 							</CardContent>
 						</Card>
+					) : isLoading || !configData ? (
+						<Card className="max-w-2xl mx-auto border-2 rounded-xl">
+							<CardContent className="p-8 text-center">
+								<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2" />
+								<p className="text-sm text-muted-foreground">
+									Loading contact form...
+								</p>
+							</CardContent>
+						</Card>
 					) : (
 						<Card className="max-w-2xl mx-auto border-2 rounded-xl">
 							<CardContent className="p-8">
@@ -670,7 +669,6 @@ export default function Page() {
 									action={withQuery(".?index", { intent: "contactSubmission" })}
 									className="space-y-6"
 								>
-									<HoneypotInputs />
 									<div>
 										<label
 											htmlFor="contact-email"
@@ -702,7 +700,7 @@ export default function Page() {
 										/>
 									</div>
 									<TurnstileWidget
-										siteKey={loaderData.turnstileSiteKey}
+										siteKey={configData.turnstileSiteKey}
 										onSuccess={setContactSubmissionTurnstileToken}
 										onError={() => setContactSubmissionTurnstileToken("")}
 										onExpire={() => setContactSubmissionTurnstileToken("")}
@@ -744,7 +742,7 @@ export default function Page() {
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<Button size="lg" className="min-w-[180px]">
+							<Button size="lg" className="min-w-45">
 								<MessageCircle className="w-5 h-5 mr-2" />
 								Join Discord
 							</Button>
@@ -754,7 +752,7 @@ export default function Page() {
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<Button variant="outline" size="lg" className="min-w-[180px]">
+							<Button variant="outline" size="lg" className="min-w-45">
 								<Github className="w-5 h-5 mr-2" />
 								Follow on GitHub
 							</Button>
@@ -780,7 +778,7 @@ const Image = (props: ImageProps) => (
 		alt={props.alt}
 		className={cn(
 			props.className,
-			"mx-auto aspect-16/9 overflow-hidden rounded-xl object-cover",
+			"mx-auto aspect-video overflow-hidden rounded-xl object-cover",
 		)}
 	/>
 );

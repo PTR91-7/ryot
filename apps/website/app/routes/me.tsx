@@ -1,15 +1,11 @@
-import {
-	CheckoutEventNames,
-	type Paddle,
-	initializePaddle,
-} from "@paddle/paddle-js";
-import PurchaseCompleteEmail from "@ryot/transactional/emails/PurchaseComplete";
+import { CheckoutEventNames, type Paddle } from "@paddle/paddle-js";
+import PurchaseCompleteEmail from "@ryot/transactional/emails/purchase-complete";
 import { changeCase, getActionIntent } from "@ryot/ts-utils";
 import { Unkey } from "@unkey/api";
 import dayjs from "dayjs";
 import { eq } from "drizzle-orm";
 import { useEffect, useState } from "react";
-import { Form, data, redirect, useFetcher, useLoaderData } from "react-router";
+import { data, Form, redirect, useFetcher, useLoaderData } from "react-router";
 import { toast } from "sonner";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -20,13 +16,13 @@ import { Card } from "~/lib/components/ui/card";
 import { Label } from "~/lib/components/ui/label";
 import {
 	GRACE_PERIOD,
+	getDb,
+	getPrices,
+	getServerVariables,
 	type PaddleCustomData,
-	db,
-	prices,
-	serverVariables,
 	websiteAuthCookie,
 } from "~/lib/config.server";
-import { startUrl } from "~/lib/constants";
+import { initializePaddleForApplication, startUrl } from "~/lib/general";
 import {
 	createUnkeyKey,
 	getCustomerWithActivePurchase,
@@ -38,9 +34,10 @@ import type { Route } from "./+types/me";
 export const loader = async ({ request }: Route.LoaderArgs) => {
 	const customerDetails = await getCustomerWithActivePurchase(request);
 	if (!customerDetails) return redirect(startUrl);
+	const serverVariables = getServerVariables();
 	return {
-		prices,
 		customerDetails,
+		prices: getPrices(),
 		renewOn: customerDetails.renewOn,
 		isSandbox: !!serverVariables.PADDLE_SANDBOX,
 		clientToken: serverVariables.PADDLE_CLIENT_TOKEN,
@@ -68,6 +65,7 @@ const getAllSubscriptionsForCustomer = async (customerId: string) => {
 export const action = async ({ request }: Route.ActionArgs) => {
 	const intent = getActionIntent(request);
 	const customer = await getCustomerWithActivePurchase(request);
+	const serverVariables = getServerVariables();
 	return await match(intent)
 		.with("regenerateUnkeyKey", async () => {
 			if (!customer || !customer.planType) throw new Error("No customer found");
@@ -84,7 +82,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 				customer,
 				renewOnDayjs ? renewOnDayjs.add(GRACE_PERIOD, "days") : undefined,
 			);
-			await db
+			await getDb()
 				.update(customers)
 				.set({ unkeyKeyId: created.keyId })
 				.where(eq(customers.id, customer.id));
@@ -149,10 +147,11 @@ export default function Index() {
 
 	useEffect(() => {
 		if (!paddle)
-			initializePaddle({
-				token: loaderData.clientToken,
-				environment: loaderData.isSandbox ? "sandbox" : undefined,
-			}).then((paddleInstance) => {
+			initializePaddleForApplication(
+				loaderData.clientToken,
+				loaderData.isSandbox,
+				loaderData.customerDetails.paddleCustomerId,
+			).then((paddleInstance) => {
 				if (paddleInstance) {
 					paddleInstance.Update({
 						eventCallback: (data) => {
