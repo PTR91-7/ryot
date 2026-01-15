@@ -109,7 +109,7 @@ jobs:
       - name: Build emails
         run: moon run transactional:build
       - name: Upload templates artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: templates
           retention-days: 1
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+      - uses: actions/download-artifact@v4
         with:
           name: templates
           path: crates/services/notification/templates/
@@ -175,7 +175,7 @@ jobs:
         run: |
           cross build --locked --target ${{ matrix.platform.target }} --release
       - name: Upload build artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v4
         with:
           name: backend-${{ steps.build.outputs.docker-arch }}
           path: ${{ github.workspace }}/target/${{ matrix.platform.target }}/release/backend
@@ -196,7 +196,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download build artifact for docker
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@v4
         with:
           path: ${{ github.workspace }}/artifact/
       - name: Set up QEMU
