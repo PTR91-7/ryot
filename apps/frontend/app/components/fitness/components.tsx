@@ -63,9 +63,9 @@ import { getExerciseDetailsPath, getSetColor } from "~/lib/shared/media-utils";
 import { clientGqlService } from "~/lib/shared/react-query";
 import { convertEnumToSelectData } from "~/lib/shared/ui-utils";
 import {
-	type TWorkoutDetails,
 	getWorkoutDetailsQuery,
 	getWorkoutTemplateDetailsQuery,
+	type TWorkoutDetails,
 	useExerciseImages,
 } from "~/lib/state/fitness";
 import { FitnessEntity } from "~/lib/types";
@@ -160,7 +160,6 @@ export const ExerciseHistory = (props: {
 	supersetInformation?: WorkoutSupersetsInformation[];
 }) => {
 	const theme = useMantineTheme();
-	const [opened, { toggle }] = useDisclosure(false);
 	const [parent] = useAutoAnimate();
 	const { data: workoutDetails } = useQuery(
 		// @ts-expect-error: Too complicated to fix and it just works this way
@@ -173,6 +172,7 @@ export const ExerciseHistory = (props: {
 			)
 			.exhaustive(),
 	);
+	const [opened, { toggle }] = useDisclosure(false);
 	const exercise = workoutDetails?.details.information.exercises.at(
 		props.exerciseIdx,
 	);

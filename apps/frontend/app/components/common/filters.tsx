@@ -4,12 +4,12 @@ import {
 	Button,
 	Group,
 	Modal,
+	rem,
 	Select,
 	Stack,
 	Text,
 	TextInput,
 	Title,
-	rem,
 } from "@mantine/core";
 import {
 	randomId,
@@ -39,7 +39,7 @@ import {
 	useCoreDetails,
 	useNonHiddenUserCollections,
 } from "~/lib/shared/hooks";
-import type { OnboardingTourStepTargets } from "~/lib/state/onboarding-tour";
+import type { OnboardingTourStepTarget } from "~/lib/state/onboarding-tour";
 import { ProRequiredAlert } from ".";
 
 export const FiltersModal = (props: {
@@ -87,13 +87,13 @@ export const CollectionsFilter = (props: {
 	applied: MediaCollectionFilter[];
 	onFiltersChanged: (val: MediaCollectionFilter[]) => void;
 }) => {
-	const coreDetails = useCoreDetails();
-	const collections = useNonHiddenUserCollections();
 	const [parent] = useAutoAnimate();
+	const coreDetails = useCoreDetails();
 	const [filters, filtersHandlers] = useListState<{
 		id: string;
 		data: MediaCollectionFilter;
 	}>(props.applied.map((a) => ({ data: a, id: randomId() })));
+	const collections = useNonHiddenUserCollections();
 
 	useDidUpdate(() => {
 		const applicableFilters = coreDetails.isServerKeyValidated
@@ -213,7 +213,7 @@ export const DebouncedSearchInput = (props: {
 	placeholder: string;
 	onChange: (query: string) => void;
 	tourControl?: {
-		target: OnboardingTourStepTargets;
+		target: OnboardingTourStepTarget;
 		onQueryChange: (query: string) => void;
 	};
 }) => {

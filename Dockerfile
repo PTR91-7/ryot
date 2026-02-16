@@ -37,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget curl ca-ce
 COPY --from=caddy:2.9.1 /usr/bin/caddy /usr/local/bin/caddy
 RUN npm install --global concurrently@9.1.2 && concurrently --version
 RUN useradd -m -u 1001 ryot
+COPY ci/run-container.sh /usr/local/bin/run-container.sh
+RUN chmod +x /usr/local/bin/run-container.sh
 WORKDIR /home/ryot
 USER ryot
 COPY ci/Caddyfile /etc/caddy/Caddyfile
@@ -44,9 +46,4 @@ COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/node_modules .
 COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/package.json ./package.json
 COPY --from=frontend-builder --chown=ryot:ryot /app/apps/frontend/build ./build
 COPY --from=artifact --chown=ryot:ryot /artifact/backend /usr/local/bin/backend
-CMD [ \
-    "concurrently", "--names", "frontend,backend,proxy", "--kill-others", \
-    "PORT=3000 npx react-router-serve ./build/server/index.js", \
-    "BACKEND_PORT=5000 /usr/local/bin/backend", \
-    "caddy run --config /etc/caddy/Caddyfile" \
-    ]
+CMD ["/usr/local/bin/run-container.sh"]

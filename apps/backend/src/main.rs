@@ -9,11 +9,13 @@ use std::{
 use anyhow::{Context, Result, bail};
 use apalis::{
     layers::WorkerBuilderExt,
-    prelude::{MemoryStorage, Monitor, WorkerBuilder, WorkerFactoryFn},
+    prelude::{MakeShared, Monitor, WorkerBuilder},
 };
-use apalis_cron::{CronStream, Schedule};
+use apalis_cron::CronStream;
+use apalis_sqlite::{SharedSqliteStorage, SqliteStorage};
 use common_utils::{PROJECT_NAME, get_temporary_directory, ryot_log};
 use config_definition::AppConfig;
+use cron::Schedule;
 use dependent_models::CompleteExport;
 use english_to_cron::str_cron_syntax;
 use env_utils::APP_VERSION;
@@ -21,6 +23,8 @@ use migrations_sql::Migrator;
 use schematic::schema::{SchemaGenerator, TypeScriptRenderer, YamlTemplateRenderer};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
 use tokio::{
     join,
     net::TcpListener,
@@ -41,6 +45,10 @@ mod job;
 
 static LOGGING_ENV_VAR: &str = "RUST_LOG";
 static BASE_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -85,29 +93,35 @@ async fn main() -> Result<()> {
         .await
         .expect("Database connection failed");
 
-    migrate_from_v8_if_applicable(&db)
+    migrate_from_v9_if_applicable(&db)
         .await
-        .context("There was an error migrating from v8")?;
+        .context("There was an error migrating from v9")?;
 
     if let Err(err) = Migrator::up(&db, None).await {
         ryot_log!(error, "Database migration failed: {}", err);
         bail!("There was an error running the database migrations.");
     };
 
-    let lp_application_job_storage = MemoryStorage::new();
-    let mp_application_job_storage = MemoryStorage::new();
-    let hp_application_job_storage = MemoryStorage::new();
-    let single_application_job_storage = MemoryStorage::new();
+    let jobs_directory =
+        PathBuf::from(get_temporary_directory()).join(format!("{PROJECT_NAME}_jobs"));
+    let mut store =
+        SharedSqliteStorage::new(&format!("sqlite:{}?mode=rwc", jobs_directory.display()));
+    SqliteStorage::setup(store.pool()).await?;
+
+    let lp_application_job_storage = store.make_shared()?;
+    let mp_application_job_storage = store.make_shared()?;
+    let hp_application_job_storage = store.make_shared()?;
+    let single_application_job_storage = store.make_shared()?;
 
     let (app_router, supporting_service) = create_app_dependencies()
         .db(db)
         .timezone(tz)
         .config(config)
         .log_file_path(log_file_path)
-        .lp_application_job(&lp_application_job_storage)
-        .mp_application_job(&mp_application_job_storage)
-        .hp_application_job(&hp_application_job_storage)
-        .single_application_job(&single_application_job_storage)
+        .lp_application_job(lp_application_job_storage.clone())
+        .mp_application_job(mp_application_job_storage.clone())
+        .hp_application_job(hp_application_job_storage.clone())
+        .single_application_job(single_application_job_storage.clone())
         .call()
         .await;
 
@@ -145,60 +159,74 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(format!("{host}:{port}")).await.unwrap();
     ryot_log!(info, "Listening on: {}", listener.local_addr()?);
 
-    let monitor = Monitor::new()
-        .register(
-            WorkerBuilder::new("infrequent_cron_jobs")
-                .enable_tracing()
-                .catch_panic()
-                .data(supporting_service.clone())
-                .backend(CronStream::new_with_timezone(infrequent_scheduler, tz))
-                .build_fn(run_infrequent_cron_jobs),
-        )
-        .register(
-            WorkerBuilder::new("frequent_cron_jobs")
-                .enable_tracing()
-                .catch_panic()
-                .data(supporting_service.clone())
-                .backend(CronStream::new_with_timezone(frequent_scheduler, tz))
-                .build_fn(run_frequent_cron_jobs),
-        )
-        // application jobs
-        .register(
-            WorkerBuilder::new("perform_single_application_job")
-                .catch_panic()
-                .enable_tracing()
-                .rate_limit(1, Duration::new(1, 0))
-                .data(supporting_service.clone())
-                .backend(single_application_job_storage)
-                .build_fn(perform_single_application_job),
-        )
-        .register(
-            WorkerBuilder::new("perform_hp_application_job")
-                .catch_panic()
-                .enable_tracing()
-                .data(supporting_service.clone())
-                .backend(hp_application_job_storage)
-                .build_fn(perform_hp_application_job),
-        )
-        .register(
-            WorkerBuilder::new("perform_mp_application_job")
-                .catch_panic()
-                .enable_tracing()
-                .rate_limit(10, Duration::new(5, 0))
-                .data(supporting_service.clone())
-                .backend(mp_application_job_storage)
-                .build_fn(perform_mp_application_job),
-        )
-        .register(
-            WorkerBuilder::new("perform_lp_application_job")
-                .catch_panic()
-                .enable_tracing()
-                .rate_limit(40, Duration::new(5, 0))
-                .data(supporting_service.clone())
-                .backend(lp_application_job_storage)
-                .build_fn(perform_lp_application_job),
-        )
-        .run();
+    let monitor = {
+        let ss1 = supporting_service.clone();
+        let ss2 = supporting_service.clone();
+        let ss3 = supporting_service.clone();
+        let ss4 = supporting_service.clone();
+        let ss5 = supporting_service.clone();
+        let ss6 = supporting_service.clone();
+
+        Monitor::new()
+            .register(move |_runs| {
+                WorkerBuilder::new("infrequent_cron_jobs")
+                    .backend(CronStream::new_with_timezone(
+                        infrequent_scheduler.clone(),
+                        tz,
+                    ))
+                    .enable_tracing()
+                    .catch_panic()
+                    .data(ss1.clone())
+                    .build(run_infrequent_cron_jobs)
+            })
+            .register(move |_runs| {
+                WorkerBuilder::new("frequent_cron_jobs")
+                    .backend(CronStream::new_with_timezone(
+                        frequent_scheduler.clone(),
+                        tz,
+                    ))
+                    .enable_tracing()
+                    .catch_panic()
+                    .data(ss2.clone())
+                    .build(run_frequent_cron_jobs)
+            })
+            .register(move |_runs| {
+                WorkerBuilder::new("perform_single_application_job")
+                    .backend(single_application_job_storage.clone())
+                    .catch_panic()
+                    .enable_tracing()
+                    .concurrency(1)
+                    .data(ss3.clone())
+                    .build(perform_single_application_job)
+            })
+            .register(move |_runs| {
+                WorkerBuilder::new("perform_hp_application_job")
+                    .backend(hp_application_job_storage.clone())
+                    .catch_panic()
+                    .enable_tracing()
+                    .data(ss4.clone())
+                    .build(perform_hp_application_job)
+            })
+            .register(move |_runs| {
+                WorkerBuilder::new("perform_mp_application_job")
+                    .backend(mp_application_job_storage.clone())
+                    .catch_panic()
+                    .enable_tracing()
+                    .rate_limit(10, Duration::new(5, 0))
+                    .data(ss5.clone())
+                    .build(perform_mp_application_job)
+            })
+            .register(move |_runs| {
+                WorkerBuilder::new("perform_lp_application_job")
+                    .backend(lp_application_job_storage.clone())
+                    .catch_panic()
+                    .enable_tracing()
+                    .rate_limit(40, Duration::new(5, 0))
+                    .data(ss6.clone())
+                    .build(perform_lp_application_job)
+            })
+            .run()
+    };
 
     let http = axum::serve(listener, app_router.into_make_service());
 
@@ -228,22 +256,11 @@ fn init_tracing() -> Result<PathBuf> {
 }
 
 fn get_cron_schedules(config: &Arc<AppConfig>, tz: chrono_tz::Tz) -> Result<(Schedule, Schedule)> {
-    let frequent_cron_jobs_every_minutes = config.scheduler.frequent_cron_jobs_every_minutes;
-    let infrequent_cron_jobs_hours_format =
-        config.scheduler.infrequent_cron_jobs_hours_format.clone();
-
-    let infrequent_format = match infrequent_cron_jobs_hours_format.as_str() {
-        "0" => str_cron_syntax(&config.scheduler.infrequent_cron_jobs_schedule)?,
-        _ => format!("0 0 {infrequent_cron_jobs_hours_format} * * *"),
-    };
-
+    let infrequent_format = str_cron_syntax(&config.scheduler.infrequent_cron_jobs_schedule)?;
     let infrequent_scheduler = Schedule::from_str(&infrequent_format)?;
     log_cron_schedule(stringify!(infrequent_scheduler), &infrequent_scheduler, tz);
 
-    let frequent_format = match frequent_cron_jobs_every_minutes {
-        5 => str_cron_syntax(&config.scheduler.frequent_cron_jobs_schedule)?,
-        _ => format!("0 */{frequent_cron_jobs_every_minutes} * * * *"),
-    };
+    let frequent_format = str_cron_syntax(&config.scheduler.frequent_cron_jobs_schedule)?;
     let frequent_scheduler = Schedule::from_str(&frequent_format)?;
     log_cron_schedule(stringify!(frequent_scheduler), &frequent_scheduler, tz);
 
@@ -255,7 +272,7 @@ fn log_cron_schedule(name: &str, schedule: &Schedule, tz: chrono_tz::Tz) {
     ryot_log!(info, "Schedule for {name:#?}: {times:?} and so on...");
 }
 
-async fn migrate_from_v8_if_applicable(db: &DatabaseConnection) -> Result<()> {
+async fn migrate_from_v9_if_applicable(db: &DatabaseConnection) -> Result<()> {
     db.execute_unprepared(
         r#"
 DO $$
@@ -266,18 +283,18 @@ BEGIN
     ) THEN
         IF EXISTS (
             SELECT 1 FROM seaql_migrations
-            WHERE version = 'm20250118_is_v8_migration'
+            WHERE version = 'm20250801_is_v9_migration'
         ) THEN
             IF NOT EXISTS (
                 SELECT 1 FROM seaql_migrations
-                WHERE version = 'm20250731_is_last_v8_migration'
+                WHERE version = 'm20251212_is_last_v9_migration'
             ) THEN
-                RAISE EXCEPTION 'Final migration for v8 does not exist, upgrade aborted.';
+                RAISE EXCEPTION 'Final migration for v9 does not exist, upgrade aborted.';
             END IF;
 
             DELETE FROM seaql_migrations;
             INSERT INTO seaql_migrations (version, applied_at) VALUES
-                ('m20230403_create_extensions', 1684693316),
+                ('m20230403_create_database_setup_requirements', 1684693316),
                 ('m20230404_create_user', 1684693317),
                 ('m20230410_create_metadata', 1684693318),
                 ('m20230411_create_metadata_group', 1684693319),
@@ -299,8 +316,10 @@ BEGIN
                 ('m20240712_create_notification_platform', 1684693335),
                 ('m20240714_create_access_link', 1684693336),
                 ('m20240827_create_daily_user_activity', 1684693337),
-                ('m20240904_create_monitored_entity', 1684693338),
-                ('m20241004_create_application_cache', 1684693339);
+                ('m20241004_create_application_cache', 1684693340),
+                ('m20250813_create_collection_entity_membership', 1684693341),
+                ('m20251115_create_filter_preset', 1684693342),
+                ('m20251128_create_entity_translation', 1684693343);
         END IF;
     END IF;
 END $$;

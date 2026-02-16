@@ -12,6 +12,8 @@ use itunes_provider::ITunesService;
 use listennotes_provider::ListennotesService;
 use manga_updates_provider::MangaUpdatesService;
 use media_models::MetadataDetails;
+use metron_provider::MetronService;
+use music_brainz_provider::MusicBrainzService;
 use myanimelist_provider::{MalAnimeService, MalMangaService, NonMediaMalService};
 use openlibrary_provider::OpenlibraryService;
 use spotify_provider::SpotifyService;
@@ -98,10 +100,10 @@ pub async fn get_metadata_provider(
         MediaSource::MangaUpdates => {
             Box::new(MangaUpdatesService::new(&ss.config.anime_and_manga.manga_updates).await?)
         }
+        MediaSource::Metron => Box::new(MetronService::new(&ss.config.comic_books.metron).await?),
+        MediaSource::MusicBrainz => Box::new(MusicBrainzService::new()?),
         MediaSource::Custom => return err(),
-        MediaSource::Spotify => {
-            Box::new(SpotifyService::new(&ss.config.music.spotify, ss.clone()).await?)
-        }
+        MediaSource::Spotify => Box::new(SpotifyService::new(ss.clone()).await?),
     };
     Ok(service)
 }
@@ -128,14 +130,14 @@ pub async fn get_non_metadata_provider(
         MediaSource::MangaUpdates => {
             Box::new(MangaUpdatesService::new(&ss.config.anime_and_manga.manga_updates).await?)
         }
+        MediaSource::Metron => Box::new(MetronService::new(&ss.config.comic_books.metron).await?),
         MediaSource::Tmdb => Box::new(get_tmdb_non_media_service(ss).await?),
         MediaSource::Anilist => {
             Box::new(NonMediaAnilistService::new(&ss.config.anime_and_manga.anilist).await?)
         }
         MediaSource::Myanimelist => Box::new(NonMediaMalService::new().await?),
-        MediaSource::Spotify => {
-            Box::new(SpotifyService::new(&ss.config.music.spotify, ss.clone()).await?)
-        }
+        MediaSource::MusicBrainz => Box::new(MusicBrainzService::new()?),
+        MediaSource::Spotify => Box::new(SpotifyService::new(ss.clone()).await?),
         MediaSource::Custom => return err(),
     };
     Ok(service)

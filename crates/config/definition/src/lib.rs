@@ -271,6 +271,32 @@ impl VideoGameConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, MaskedConfig)]
+#[config(rename_all = "snake_case", env_prefix = "COMIC_BOOK_METRON_")]
+pub struct MetronConfig {
+    /// The username for the Metron API.
+    #[mask]
+    pub username: String,
+    /// The password for the Metron API.
+    #[mask]
+    pub password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Config, MaskedConfig)]
+#[config(rename_all = "snake_case")]
+pub struct ComicBookConfig {
+    /// Settings related to Metron.
+    #[setting(nested)]
+    #[mask_nested]
+    pub metron: MetronConfig,
+}
+
+impl ComicBookConfig {
+    pub fn is_enabled(&self) -> bool {
+        !self.metron.username.is_empty() && !self.metron.password.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Config, MaskedConfig)]
 #[config(rename_all = "snake_case", env_prefix = "VISUAL_NOVEL_")]
 pub struct VisualNovelConfig {}
 
@@ -349,18 +375,6 @@ pub struct SchedulerConfig {
     /// Uses https://github.com/kaplanelad/english-to-cron.
     #[setting(default = "every midnight")]
     pub infrequent_cron_jobs_schedule: String,
-
-    // FIXME: Remove these in the next major release.
-    /// Run frequent cron tasks (syncing integrations, workout revisions) every `n` minutes.
-    /// Will be removed in the next major release. Please use `frequent_cron_jobs_schedule` instead.
-    #[deprecated]
-    #[setting(default = 5)]
-    pub frequent_cron_jobs_every_minutes: i32,
-    /// Hours cron component for infrequent cron jobs (cleaning up data, refreshing calendar).
-    /// Will be removed in the next major release. Please use `infrequent_cron_jobs_schedule` instead
-    #[deprecated]
-    #[setting(default = "0")]
-    pub infrequent_cron_jobs_hours_format: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Config, MaskedConfig)]
@@ -512,6 +526,10 @@ pub struct AppConfig {
     #[setting(nested)]
     #[mask_nested]
     pub video_games: VideoGameConfig,
+    /// Settings related to comic books.
+    #[setting(nested)]
+    #[mask_nested]
+    pub comic_books: ComicBookConfig,
     /// Settings related to audio books.
     #[setting(nested)]
     pub audio_books: AudioBookConfig,

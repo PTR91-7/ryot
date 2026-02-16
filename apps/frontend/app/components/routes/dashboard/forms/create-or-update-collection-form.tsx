@@ -10,8 +10,8 @@ import {
 	Select,
 	Stack,
 	TagsInput,
-	TextInput,
 	Textarea,
+	TextInput,
 	Title,
 	Tooltip,
 } from "@mantine/core";
@@ -42,10 +42,10 @@ import { useCreateOrUpdateCollectionModal } from "~/lib/state/collection";
 export const CreateOrUpdateCollectionModal = (props: {
 	onClose: () => void;
 }) => {
+	const [parent] = useAutoAnimate();
 	const coreDetails = useCoreDetails();
 	const userDetails = useUserDetails();
 	const userCollections = useUserCollections();
-	const [parent] = useAutoAnimate();
 
 	const { data: modalData } = useCreateOrUpdateCollectionModal();
 

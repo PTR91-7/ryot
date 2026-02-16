@@ -26,7 +26,7 @@ import {
 	zodNumAsString,
 } from "@ryot/ts-utils";
 import { IconAt } from "@tabler/icons-react";
-import { Form, Link, data, redirect, useLoaderData } from "react-router";
+import { data, Form, Link, redirect, useLoaderData } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -187,8 +187,8 @@ const loginSchema = z.object({
 
 export default function Page() {
 	const [form, fields] = useForm({});
-	const loaderData = useLoaderData<typeof loader>();
 	const [parent] = useAutoAnimate();
+	const loaderData = useLoaderData<typeof loader>();
 	const intent = loaderData.intent;
 
 	return (

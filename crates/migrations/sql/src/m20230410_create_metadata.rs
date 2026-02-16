@@ -54,12 +54,12 @@ pub enum Metadata {
     ShowSpecifics,
     CreatedByUserId,
     VideoGameSpecifics,
+    ComicBookSpecifics,
     VisualNovelSpecifics,
     MusicSpecifics,
     WatchProviders,
     ExternalIdentifiers,
     Assets,
-    HasTranslationsForLanguages,
 }
 
 #[async_trait::async_trait]
@@ -110,10 +110,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Metadata::SourceUrl).text())
                     .col(ColumnDef::new(Metadata::CreatedByUserId).text())
                     .col(ColumnDef::new(Metadata::Assets).json_binary().not_null())
-                    .col(
-                        ColumnDef::new(Metadata::HasTranslationsForLanguages)
-                            .array(ColumnType::Text),
-                    )
+                    .col(ColumnDef::new(Metadata::ComicBookSpecifics).json_binary())
                     .foreign_key(
                         ForeignKey::create()
                             .name(METADATA_TO_USER_FOREIGN_KEY)

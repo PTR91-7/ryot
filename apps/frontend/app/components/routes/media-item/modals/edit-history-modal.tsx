@@ -13,7 +13,7 @@ import {
 	Tooltip,
 } from "@mantine/core";
 import { DateTimePicker } from "@mantine/dates";
-import { SeenState } from "@ryot/generated/graphql/backend/graphql";
+import { MediaLot, SeenState } from "@ryot/generated/graphql/backend/graphql";
 import { useState } from "react";
 import { Form } from "react-router";
 import { withQuery } from "ufo";
@@ -21,7 +21,9 @@ import { PRO_REQUIRED_MESSAGE } from "~/lib/shared/constants";
 import {
 	useCoreDetails,
 	useGetWatchProviders,
+	useMetadataDetails,
 	useUserDetails,
+	useUserMetadataDetails,
 } from "~/lib/shared/hooks";
 import { getVerb } from "~/lib/shared/media-utils";
 import { refreshEntityDetails } from "~/lib/shared/react-query";
@@ -29,32 +31,49 @@ import { Verb } from "~/lib/types";
 import {
 	type DurationInput,
 	type History,
-	type MetadataDetails,
 	POSSIBLE_DURATION_UNITS,
-	type UserMetadataDetails,
 } from "../types";
 import { convertDurationToSeconds, convertSecondsToDuration } from "../utils";
 
 export const EditHistoryItemModal = (props: {
 	seen: History;
 	opened: boolean;
+	metadataId: string;
 	onClose: () => void;
-	metadataDetails: MetadataDetails;
-	userMetadataDetails: UserMetadataDetails;
 }) => {
 	const userDetails = useUserDetails();
-	const reviewsByThisCurrentUser = props.userMetadataDetails.reviews.filter(
-		(r) => r.postedBy.id === userDetails.id,
-	);
-	const { startedOn, finishedOn, id, manualTimeSpent, providersConsumedOn } =
-		props.seen;
 	const coreDetails = useCoreDetails();
-	const isNotCompleted = props.seen.state !== SeenState.Completed;
-	const watchProviders = useGetWatchProviders(props.metadataDetails.lot);
+	const [{ data: metadataDetails }] = useMetadataDetails(props.metadataId);
+	const { data: userMetadataDetails } = useUserMetadataDetails(
+		props.metadataId,
+	);
+	const watchProviders = useGetWatchProviders(metadataDetails?.lot);
 	const [manualTimeSpentValue, setManualTimeSpentValue] =
-		useState<DurationInput>(convertSecondsToDuration(manualTimeSpent));
+		useState<DurationInput>(
+			convertSecondsToDuration(props.seen.manualTimeSpent),
+		);
+	const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<
+		number | null
+	>(props.seen.showExtraInformation?.season ?? null);
+
 	const manualTimeSpentInSeconds =
 		convertDurationToSeconds(manualTimeSpentValue);
+	const reviewsByThisCurrentUser = (userMetadataDetails?.reviews ?? []).filter(
+		(r) => r.postedBy.id === userDetails.id,
+	);
+	const areStartAndEndInputsDisabled = ![
+		SeenState.Completed,
+		SeenState.Dropped,
+	].includes(props.seen.state);
+
+	const seasons = metadataDetails?.showSpecifics?.seasons ?? [];
+	const selectedSeason = seasons.find(
+		(s) => s.seasonNumber === selectedSeasonNumber,
+	);
+	const episodes = selectedSeason?.episodes ?? [];
+	const podcastEpisodes = metadataDetails?.podcastSpecifics?.episodes ?? [];
+
+	if (!metadataDetails) return null;
 
 	return (
 		<Modal
@@ -70,32 +89,113 @@ export const EditHistoryItemModal = (props: {
 				action={withQuery(".", { intent: "editSeenItem" })}
 				onSubmit={() => {
 					props.onClose();
-					refreshEntityDetails(props.metadataDetails.id);
+					refreshEntityDetails(props.metadataId);
 				}}
 			>
-				<input hidden name="seenId" defaultValue={id} />
+				<input hidden name="seenId" defaultValue={props.seen.id} />
 				<Stack>
 					<Title order={3}>Edit history record</Title>
 					<DateTimePicker
 						name="startedOn"
 						label="Start Date & Time"
-						disabled={isNotCompleted}
-						defaultValue={startedOn ? new Date(startedOn) : undefined}
+						disabled={areStartAndEndInputsDisabled}
+						defaultValue={
+							props.seen.startedOn ? new Date(props.seen.startedOn) : undefined
+						}
 					/>
 					<DateTimePicker
 						name="finishedOn"
 						label="End Date & Time"
-						disabled={isNotCompleted}
-						defaultValue={finishedOn ? new Date(finishedOn) : undefined}
+						disabled={areStartAndEndInputsDisabled}
+						defaultValue={
+							props.seen.finishedOn
+								? new Date(props.seen.finishedOn)
+								: undefined
+						}
 					/>
+					{metadataDetails.lot === MediaLot.Show && seasons.length > 0 ? (
+						<>
+							<Select
+								label="Season"
+								name="showSeasonNumber"
+								onChange={(v) => setSelectedSeasonNumber(v ? Number(v) : null)}
+								data={seasons.map((s) => ({
+									label: s.name,
+									value: String(s.seasonNumber),
+								}))}
+								value={
+									selectedSeasonNumber !== null
+										? String(selectedSeasonNumber)
+										: null
+								}
+							/>
+							<Select
+								label="Episode"
+								name="showEpisodeNumber"
+								data={episodes.map((e) => ({
+									value: String(e.episodeNumber),
+									label: `${e.episodeNumber}. ${e.name}`,
+								}))}
+								defaultValue={
+									props.seen.showExtraInformation?.episode !== undefined
+										? String(props.seen.showExtraInformation.episode)
+										: undefined
+								}
+							/>
+						</>
+					) : null}
+					{metadataDetails.lot === MediaLot.Anime ? (
+						<NumberInput
+							label="Episode"
+							name="animeEpisodeNumber"
+							defaultValue={
+								props.seen.animeExtraInformation?.episode ?? undefined
+							}
+						/>
+					) : null}
+					{metadataDetails.lot === MediaLot.Manga ? (
+						<>
+							<NumberInput
+								label="Chapter"
+								decimalScale={2}
+								name="mangaChapterNumber"
+								defaultValue={
+									props.seen.mangaExtraInformation?.chapter ?? undefined
+								}
+							/>
+							<NumberInput
+								label="Volume"
+								name="mangaVolumeNumber"
+								defaultValue={
+									props.seen.mangaExtraInformation?.volume ?? undefined
+								}
+							/>
+						</>
+					) : null}
+					{metadataDetails.lot === MediaLot.Podcast &&
+					podcastEpisodes.length > 0 ? (
+						<Select
+							label="Episode"
+							name="podcastEpisodeNumber"
+							data={podcastEpisodes.map((e) => ({
+								value: String(e.number),
+								label: `${e.number}. ${e.title}`,
+							}))}
+							defaultValue={
+								props.seen.podcastExtraInformation?.episode !== undefined
+									? String(props.seen.podcastExtraInformation.episode)
+									: undefined
+							}
+						/>
+					) : null}
 					<MultiSelect
 						data={watchProviders}
 						name="providersConsumedOn"
-						defaultValue={providersConsumedOn || []}
+						defaultValue={props.seen.providersConsumedOn || []}
 						nothingFoundMessage="No watch providers configured. Please add them in your general preferences."
 						label={`Where did you ${getVerb(
 							Verb.Read,
-							props.metadataDetails.lot,
+							metadataDetails.lot,
 						)} it?`}
 					/>
 					<Tooltip
@@ -111,6 +211,7 @@ export const EditHistoryItemModal = (props: {
 							defaultValue={props.seen.reviewId}
 							disabled={!coreDetails.isServerKeyValidated}
 							data={reviewsByThisCurrentUser.map((r) => ({
+								value: r.id,
 								label: [
 									r.textOriginal
 										? `${r.textOriginal.slice(0, 20)}...`
@@ -120,7 +221,6 @@ export const EditHistoryItemModal = (props: {
 								]
 									.filter(Boolean)
 									.join(" • "),
-								value: r.id,
 							}))}
 						/>
 					</Tooltip>

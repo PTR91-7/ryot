@@ -41,7 +41,7 @@ import {
 	useGetSetAtIndex,
 } from "~/lib/state/fitness";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { StatInput } from "../stat-display-and-input";
@@ -68,25 +68,25 @@ export const SetDisplay = (props: {
 	toBeDisplayedColumns: number;
 	durationUnit: ExerciseDurationUnit;
 }) => {
+	const [parent] = useAutoAnimate();
 	const coreDetails = useCoreDetails();
 	const userPreferences = useUserPreferences();
 	const [currentTimer, _] = useCurrentWorkoutTimerAtom();
-	const [parent] = useAutoAnimate();
 	const [currentWorkout, setCurrentWorkout] = useCurrentWorkout();
 	invariant(currentWorkout);
 	const exercise = useGetExerciseAtIndex(props.exerciseIdx);
 	invariant(exercise);
 	const set = useGetSetAtIndex(props.exerciseIdx, props.setIdx);
 	invariant(set);
-	const [isEditingRestTimer, setIsEditingRestTimer] = useState(false);
-	const [isRpeModalOpen, setIsRpeModalOpen] = useState(false);
-	const [value, setValue] = useDebouncedState(set.note || "", 500);
 	const { data: previousSetData } = usePreviousSetData({
 		setIdx: props.setIdx,
 		exerciseIdx: props.exerciseIdx,
 		currentWorkout: currentWorkout,
 		exerciseId: exercise.exerciseId,
 	});
+	const [isRpeModalOpen, setIsRpeModalOpen] = useState(false);
+	const [value, setValue] = useDebouncedState(set.note || "", 500);
+	const [isEditingRestTimer, setIsEditingRestTimer] = useState(false);
 	const { advanceOnboardingTourStep } = useOnboardingTour();
 
 	const closeRpeModal = () => setIsRpeModalOpen(false);
@@ -127,7 +127,7 @@ export const SetDisplay = (props: {
 								}}
 								className={clsx(
 									isOnboardingTourStep &&
-										OnboardingTourStepTargets.OpenSetMenuDetails,
+										OnboardingTourStepTarget.OpenSetMenuDetails,
 								)}
 							>
 								<Text mt={2} fw="bold" c={getSetColor(set.lot)} ta="center">

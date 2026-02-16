@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use common_models::{
     EntityAssets, EntityRemoteVideo, EntityRemoteVideoSource, PersonSourceSpecifics, SearchDetails,
@@ -18,7 +18,8 @@ use hashbag::HashBag;
 use itertools::Itertools;
 use media_models::{
     EntityTranslationDetails, MetadataDetails, MetadataSearchItem, PartialMetadataPerson,
-    PartialMetadataWithoutId, ShowEpisode, ShowSeason, ShowSpecifics,
+    PartialMetadataWithoutId, PodcastTranslationExtraInformation, ShowEpisode, ShowSeason,
+    ShowSpecifics, ShowTranslationExtraInformation,
 };
 use rust_decimal::dec;
 use supporting_service::SupportingService;
@@ -288,19 +289,58 @@ impl MediaProvider for TmdbShowService {
         &self,
         identifier: &str,
         target_language: &str,
+        show_extra_information: Option<&ShowTranslationExtraInformation>,
+        _podcast_extra_information: Option<&PodcastTranslationExtraInformation>,
     ) -> Result<EntityTranslationDetails> {
-        let rsp = self
-            .0
-            .client
-            .get(format!("{URL}/tv/{identifier}"))
-            .query(&[("language", target_language)])
-            .send()
-            .await?;
-        let data: TmdbMediaEntry = rsp.json().await?;
-        Ok(EntityTranslationDetails {
-            title: data.name,
-            description: data.overview,
-        })
+        match show_extra_information {
+            None => {
+                let rsp = self
+                    .0
+                    .client
+                    .get(format!("{URL}/tv/{identifier}"))
+                    .query(&[("language", target_language)])
+                    .send()
+                    .await?;
+                let data: TmdbMediaEntry = rsp.json().await?;
+                Ok(EntityTranslationDetails {
+                    title: data.name,
+                    description: data.overview,
+                    image: data.poster_path.map(|p| self.0.get_image_url(p)),
+                })
+            }
+            Some(extra) => {
+                let rsp = self
+                    .0
+                    .client
+                    .get(format!("{URL}/tv/{identifier}/season/{}", extra.season))
+                    .query(&[("language", target_language)])
+                    .send()
+                    .await?;
+                let season_data: TmdbSeason = rsp.json().await?;
+                match extra.episode {
+                    None => Ok(EntityTranslationDetails {
+                        title: Some(season_data.name),
+                        description: season_data.overview,
+                        image: season_data.poster_path.map(|p| self.0.get_image_url(p)),
+                    }),
+                    Some(ep_num) => {
+                        let episode = season_data
+                            .episodes
+                            .iter()
+                            .find(|e| e.episode_number == ep_num)
+                            .ok_or_else(|| anyhow!("Episode not found"))?;
+                        Ok(EntityTranslationDetails {
+                            title: Some(episode.name.clone()),
+                            description: episode.overview.clone(),
+                            image: episode
+                                .still_path
+                                .as_ref()
+                                .map(|p| self.0.get_image_url(p.clone())),
+                        })
+                    }
+                }
+            }
+        }
     }
 }
 

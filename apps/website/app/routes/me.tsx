@@ -1,32 +1,40 @@
-import {
-	CheckoutEventNames,
-	type Paddle,
-	initializePaddle,
-} from "@paddle/paddle-js";
-import PurchaseCompleteEmail from "@ryot/transactional/emails/PurchaseComplete";
+import { CheckoutEventNames, type Paddle } from "@paddle/paddle-js";
+import PurchaseCompleteEmail from "@ryot/transactional/emails/purchase-complete";
 import { changeCase, getActionIntent } from "@ryot/ts-utils";
-import { Unkey } from "@unkey/api";
 import dayjs from "dayjs";
 import { eq } from "drizzle-orm";
 import { useEffect, useState } from "react";
-import { Form, data, redirect, useFetcher, useLoaderData } from "react-router";
+import { data, Form, redirect, useFetcher, useLoaderData } from "react-router";
 import { toast } from "sonner";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
-import { customers } from "~/drizzle/schema.server";
+import {
+	customers,
+	type TPlanTypes,
+	type TProductTypes,
+} from "~/drizzle/schema.server";
+import {
+	getCancellation,
+	getPurchaseInProgress,
+	setCancellation,
+	setPurchaseInProgress,
+} from "~/lib/caches.server";
 import Pricing from "~/lib/components/Pricing";
 import { Button } from "~/lib/components/ui/button";
 import { Card } from "~/lib/components/ui/card";
 import { Label } from "~/lib/components/ui/label";
 import {
+	findPolarProductId,
 	GRACE_PERIOD,
+	getDb,
+	getPolarClient,
+	getPrices,
+	getServerVariables,
+	getUnkeyClient,
 	type PaddleCustomData,
-	db,
-	prices,
-	serverVariables,
 	websiteAuthCookie,
 } from "~/lib/config.server";
-import { startUrl } from "~/lib/constants";
+import { initializePaddleForApplication, startUrl } from "~/lib/general";
 import {
 	createUnkeyKey,
 	getCustomerWithActivePurchase,
@@ -38,12 +46,19 @@ import type { Route } from "./+types/me";
 export const loader = async ({ request }: Route.LoaderArgs) => {
 	const customerDetails = await getCustomerWithActivePurchase(request);
 	if (!customerDetails) return redirect(startUrl);
+
+	const serverVariables = getServerVariables();
+	const isCancelling = getCancellation(customerDetails.id);
+	const isPurchaseInProgress = getPurchaseInProgress(customerDetails.id);
 	return {
-		prices,
+		isCancelling,
+		isPurchaseInProgress,
 		customerDetails,
+		prices: getPrices(),
 		renewOn: customerDetails.renewOn,
 		isSandbox: !!serverVariables.PADDLE_SANDBOX,
 		clientToken: serverVariables.PADDLE_CLIENT_TOKEN,
+		paymentProvider: customerDetails.paymentProvider,
 	};
 };
 
@@ -65,14 +80,28 @@ const getAllSubscriptionsForCustomer = async (customerId: string) => {
 	return allSubscriptions;
 };
 
+const getAllPolarSubscriptionsForCustomer = async (customerId: string) => {
+	const allSubscriptions = [];
+	const polar = getPolarClient();
+	const subscriptionsIterator = await polar.subscriptions.list({
+		externalCustomerId: customerId,
+	});
+
+	for await (const page of subscriptionsIterator)
+		allSubscriptions.push(...page.result.items);
+
+	return allSubscriptions;
+};
+
 export const action = async ({ request }: Route.ActionArgs) => {
 	const intent = getActionIntent(request);
 	const customer = await getCustomerWithActivePurchase(request);
+	const serverVariables = getServerVariables();
 	return await match(intent)
 		.with("regenerateUnkeyKey", async () => {
 			if (!customer || !customer.planType) throw new Error("No customer found");
 			if (!customer.unkeyKeyId) throw new Error("No unkey key found");
-			const unkey = new Unkey({ rootKey: serverVariables.UNKEY_ROOT_KEY });
+			const unkey = getUnkeyClient();
 			await unkey.keys.updateKey({
 				enabled: false,
 				keyId: customer.unkeyKeyId,
@@ -84,23 +113,57 @@ export const action = async ({ request }: Route.ActionArgs) => {
 				customer,
 				renewOnDayjs ? renewOnDayjs.add(GRACE_PERIOD, "days") : undefined,
 			);
-			await db
+			await getDb()
 				.update(customers)
 				.set({ unkeyKeyId: created.keyId })
 				.where(eq(customers.id, customer.id));
+			const emailElement = PurchaseCompleteEmail({
+				planType: customer.planType,
+				renewOn: customer.renewOn || undefined,
+				details: { __typename: "self_hosted", key: created.key },
+			});
+			if (!emailElement) throw new Error("Failed to create email element");
 			await sendEmail({
+				element: emailElement,
 				recipient: customer.email,
 				subject: PurchaseCompleteEmail.subject,
-				element: PurchaseCompleteEmail({
-					planType: customer.planType,
-					renewOn: customer.renewOn || undefined,
-					details: { __typename: "self_hosted", key: created.key },
-				}),
 			});
 			return data({});
 		})
 		.with("cancelSubscription", async () => {
-			if (!customer?.paddleCustomerId)
+			if (!customer) throw new Error("No customer found");
+
+			if (customer.paymentProvider === "polar") {
+				if (!customer.polarCustomerId)
+					throw new Error("No Polar customer ID found");
+
+				const subscriptionsResponse = await getAllPolarSubscriptionsForCustomer(
+					customer.id,
+				);
+
+				const activeSubscription = subscriptionsResponse.find((sub) =>
+					["active", "trialing"].includes(sub.status),
+				);
+
+				if (!activeSubscription)
+					throw new Error("No active subscription found");
+
+				console.log("Active Polar Subscription:", {
+					customerId: customer.id,
+					activeSubscription: activeSubscription.id,
+				});
+
+				const polar = getPolarClient();
+				await polar.subscriptions.revoke({ id: activeSubscription.id });
+				setCancellation(customer.id);
+
+				return data({
+					success: true,
+					message: "Subscription cancelled successfully",
+				});
+			}
+
+			if (!customer.paddleCustomerId)
 				throw new Error("No Paddle customer ID found");
 			const paddleClient = getPaddleServerClient();
 
@@ -114,7 +177,7 @@ export const action = async ({ request }: Route.ActionArgs) => {
 
 			if (!activeSubscription) throw new Error("No active subscription found");
 
-			console.log("Active Subscription:", {
+			console.log("Active Paddle Subscription:", {
 				customerId: customer.id,
 				activeSubscription: activeSubscription.id,
 			});
@@ -122,13 +185,48 @@ export const action = async ({ request }: Route.ActionArgs) => {
 			await paddleClient.subscriptions.cancel(activeSubscription.id, {
 				effectiveFrom: "immediately",
 			});
-
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			setCancellation(customer.id);
 
 			return data({
 				success: true,
 				message: "Subscription cancelled successfully",
 			});
+		})
+		.with("checkoutPolar", async () => {
+			if (!customer) throw new Error("No customer found");
+			if (customer.paymentProvider !== "polar")
+				throw new Error("Customer is not on Polar");
+
+			const formData = await request.formData();
+			const productType = formData
+				.get("productType")
+				?.toString() as TProductTypes;
+			const planType = formData.get("planType")?.toString() as TPlanTypes;
+
+			if (!productType || !planType)
+				throw new Error("Product type and plan type are required");
+
+			const productId = findPolarProductId(productType, planType);
+
+			if (!productId) throw new Error("Polar product not found");
+
+			setPurchaseInProgress(customer.id);
+
+			const polar = getPolarClient();
+			const frontendUrl = serverVariables.FRONTEND_URL;
+			const checkout = await polar.checkouts.create({
+				products: [productId],
+				customerEmail: customer.email,
+				successUrl: `${frontendUrl}/me`,
+				externalCustomerId: customer.id,
+			});
+
+			return redirect(checkout.url);
+		})
+		.with("checkoutPaddle", async () => {
+			if (!customer) throw new Error("No customer found");
+			setPurchaseInProgress(customer.id);
+			return data({});
 		})
 		.with("logout", async () => {
 			const cookies = await websiteAuthCookie.serialize("", {
@@ -140,38 +238,61 @@ export const action = async ({ request }: Route.ActionArgs) => {
 };
 
 export default function Index() {
-	const loaderData = useLoaderData<typeof loader>();
-	const [paddle, setPaddle] = useState<Paddle>();
 	const fetcher = useFetcher();
+	const [paddle, setPaddle] = useState<Paddle>();
+	const loaderData = useLoaderData<typeof loader>();
 
 	const isCancelLoading = fetcher.state !== "idle";
 	const paddleCustomerId = loaderData.customerDetails.paddleCustomerId;
 
 	useEffect(() => {
 		if (!paddle)
-			initializePaddle({
-				token: loaderData.clientToken,
-				environment: loaderData.isSandbox ? "sandbox" : undefined,
-			}).then((paddleInstance) => {
+			initializePaddleForApplication(
+				loaderData.clientToken,
+				loaderData.isSandbox,
+				loaderData.customerDetails.paddleCustomerId,
+			).then((paddleInstance) => {
 				if (paddleInstance) {
 					paddleInstance.Update({
 						eventCallback: (data) => {
 							if (data.name === CheckoutEventNames.CHECKOUT_COMPLETED) {
 								paddleInstance.Checkout.close();
-								toast.loading(
-									"Purchase successful. Your order will be shipped shortly.",
-								);
-								setTimeout(() => window.location.reload(), 10000);
+								const formData = new FormData();
+								fetcher.submit(formData, {
+									method: "POST",
+									action: withQuery(".", { intent: "checkoutPaddle" }),
+								});
 							}
 						},
 					});
 					setPaddle(paddleInstance);
 				}
 			});
-	}, []);
+	}, [
+		paddle,
+		loaderData.isSandbox,
+		loaderData.clientToken,
+		loaderData.customerDetails.paddleCustomerId,
+	]);
 
 	return (
 		<>
+			{loaderData.isCancelling ? (
+				<div
+					role="alert"
+					className="mx-auto mt-6 w-full max-w-md rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+				>
+					Cancellation in progress. This can take a minute to sync.
+				</div>
+			) : null}
+			{loaderData.isPurchaseInProgress ? (
+				<div
+					role="alert"
+					className="mx-auto mt-6 w-full max-w-md rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+				>
+					Purchase in progress. This can take a minute to sync.
+				</div>
+			) : null}
 			{!loaderData.customerDetails.hasCancelled &&
 			loaderData.customerDetails.planType &&
 			loaderData.customerDetails.productType ? (
@@ -221,7 +342,7 @@ export default function Index() {
 									>
 										<button
 											type="submit"
-											className="text-xs underline text-right"
+											className="text-xs underline text-right cursor-pointer"
 											onClick={(e) => {
 												const yes = confirm(
 													"Are you sure you want to regenerate the unkey key? All old unkey keys will be invalidated.",
@@ -248,15 +369,45 @@ export default function Index() {
 					isLoggedIn
 					prices={loaderData.prices}
 					onClick={(priceId) => {
+						if (loaderData.paymentProvider === "polar") {
+							let planType = "";
+							let productType = "";
+							const prices = loaderData.prices;
+
+							for (const product of prices) {
+								const matchingPrice = product.prices.find(
+									(p) => p.priceId === priceId,
+								);
+								if (matchingPrice) {
+									productType = product.type;
+									planType = matchingPrice.name;
+									break;
+								}
+							}
+
+							if (productType && planType) {
+								const formData = new FormData();
+								formData.append("planType", planType);
+								formData.append("productType", productType);
+								fetcher.submit(formData, {
+									method: "POST",
+									action: withQuery(".", { intent: "checkoutPolar" }),
+								});
+							} else {
+								toast.error("Unable to determine product for checkout.");
+							}
+							return;
+						}
+
 						paddle?.Checkout.open({
 							items: [{ priceId, quantity: 1 }],
-							customer: paddleCustomerId
-								? { id: paddleCustomerId }
-								: { email: loaderData.customerDetails.email },
+							settings: paddleCustomerId ? { allowLogout: false } : undefined,
 							customData: {
 								customerId: loaderData.customerDetails.id,
 							} as PaddleCustomData,
-							settings: paddleCustomerId ? { allowLogout: false } : undefined,
+							customer: paddleCustomerId
+								? { id: paddleCustomerId }
+								: { email: loaderData.customerDetails.email },
 						});
 					}}
 				/>

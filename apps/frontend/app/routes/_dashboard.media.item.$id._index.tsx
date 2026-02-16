@@ -20,6 +20,7 @@ import {
 	DeleteSeenItemDocument,
 	DisassociateMetadataDocument,
 	EntityLot,
+	EntityTranslationVariant,
 	MediaLot,
 	MediaSource,
 	MergeMetadataDocument,
@@ -50,13 +51,13 @@ import {
 	IconVideo,
 } from "@tabler/icons-react";
 import {
-	type ReactNode,
 	forwardRef,
+	type ReactNode,
 	useCallback,
 	useRef,
 	useState,
 } from "react";
-import { Form, Link, data, useLoaderData } from "react-router";
+import { data, Form, Link, useLoaderData } from "react-router";
 import { Virtuoso, VirtuosoGrid, type VirtuosoHandle } from "react-virtuoso";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
@@ -100,6 +101,8 @@ import {
 	useDeployBulkMetadataProgressUpdateMutation,
 	useMetadataDetails,
 	useMetadataGroupDetails,
+	useMetadataGroupTranslationValue,
+	useMetadataTranslationValue,
 	useUserMetadataDetails,
 	useUserPreferences,
 } from "~/lib/shared/hooks";
@@ -120,13 +123,13 @@ import {
 	useReviewEntity,
 } from "~/lib/state/media";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { Verb } from "~/lib/types";
 import {
-	MetadataIdSchema,
 	createToastHeaders,
+	MetadataIdSchema,
 	redirectWithToast,
 	serverGqlService,
 } from "~/lib/utilities.server";
@@ -222,16 +225,23 @@ const editSeenItem = z.object({
 	manualTimeSpent: z.string().optional(),
 	startedOn: zodDateTimeString.optional(),
 	finishedOn: zodDateTimeString.optional(),
+	mangaChapterNumber: z.string().optional(),
+	showSeasonNumber: z.coerce.number().optional(),
+	mangaVolumeNumber: z.coerce.number().optional(),
+	showEpisodeNumber: z.coerce.number().optional(),
+	animeEpisodeNumber: z.coerce.number().optional(),
+	podcastEpisodeNumber: z.coerce.number().optional(),
 	providersConsumedOn: z.array(z.string()).optional(),
 });
 
 export default function Page() {
 	const loaderData = useLoaderData<typeof loader>();
-	const userPreferences = useUserPreferences();
 	const submit = useConfirmSubmit();
+	const userPreferences = useUserPreferences();
 
-	const [metadataDetails, isMetadataPartialStatusActive, metadataTranslations] =
-		useMetadataDetails(loaderData.metadataId);
+	const [metadataDetails, isMetadataPartialStatusActive] = useMetadataDetails(
+		loaderData.metadataId,
+	);
 	const userMetadataDetails = useUserMetadataDetails(loaderData.metadataId);
 	const averageRatingValue = convertRatingToUserScale(
 		userMetadataDetails.data?.averageRating,
@@ -259,11 +269,38 @@ export default function Page() {
 	] = useDisclosure(false);
 	const { initializeMetadataToUpdate } = useMetadataProgressUpdate();
 	const [_r, setEntityToReview] = useReviewEntity();
-	const [_a, setAddEntityToCollectionsData] = useAddEntityToCollections();
 	const [openedShowSeason, setOpenedShowSeason] = useState<number>();
 	const { advanceOnboardingTourStep } = useOnboardingTour();
+	const [_a, setAddEntityToCollectionsData] = useAddEntityToCollections();
+
+	const metadataTitleTranslation = useMetadataTranslationValue({
+		metadataId: loaderData.metadataId,
+		variant: EntityTranslationVariant.Title,
+	});
+
+	const metadataDescriptionTranslation = useMetadataTranslationValue({
+		metadataId: loaderData.metadataId,
+		variant: EntityTranslationVariant.Description,
+	});
+
+	const metadataImageTranslation = useMetadataTranslationValue({
+		metadataId: loaderData.metadataId,
+		variant: EntityTranslationVariant.Image,
+	});
+
+	const title = metadataTitleTranslation || metadataDetails.data?.title || "";
+	const description =
+		metadataDescriptionTranslation || metadataDetails.data?.description;
+	const nextEntry = userMetadataDetails.data?.nextEntry;
+	const inProgress = userMetadataDetails.data?.inProgress;
+	const firstGroupAssociated = metadataDetails.data?.groups.at(0);
+	const videos = [...(metadataDetails.data?.assets.remoteVideos || [])];
+	const [{ data: metadataGroupDetails }] = useMetadataGroupDetails(
+		firstGroupAssociated?.id,
+		userPreferences.featuresEnabled.media.groups && !!firstGroupAssociated?.id,
+	);
 	const deployBulkMetadataProgressUpdate =
-		useDeployBulkMetadataProgressUpdateMutation(metadataDetails.data?.title);
+		useDeployBulkMetadataProgressUpdateMutation(title);
 
 	const changeProgress = useCallback(
 		(change: MetadataProgressUpdateChange) =>
@@ -278,20 +315,10 @@ export default function Page() {
 		[changeProgress],
 	);
 
-	const title =
-		metadataTranslations?.title || metadataDetails.data?.title || "";
-	const description =
-		metadataTranslations?.description || metadataDetails.data?.description;
-	const nextEntry = userMetadataDetails.data?.nextEntry;
-	const inProgress = userMetadataDetails.data?.inProgress;
-	const firstGroupAssociated = metadataDetails.data?.groups.at(0);
-	const videos = [...(metadataDetails.data?.assets.remoteVideos || [])];
-	const [{ data: metadataGroupDetails }, _, metadataGroupTranslations] =
-		useMetadataGroupDetails(
-			firstGroupAssociated?.id,
-			userPreferences.featuresEnabled.media.groups &&
-				!!firstGroupAssociated?.id,
-		);
+	const metadataGroupTitleTranslation = useMetadataGroupTranslationValue({
+		variant: EntityTranslationVariant.Title,
+		metadataGroupId: firstGroupAssociated?.id,
+	});
 	const additionalMetadataDetails = [
 		userPreferences.featuresEnabled.media.groups && firstGroupAssociated && (
 			<Link
@@ -302,7 +329,7 @@ export default function Page() {
 				})}
 			>
 				<Text c="dimmed" fs="italic" span>
-					{metadataGroupTranslations?.title ||
+					{metadataGroupTitleTranslation ||
 						metadataGroupDetails?.details.title ||
 						"Group"}{" "}
 					{isNumber(firstGroupAssociated.part)
@@ -327,6 +354,8 @@ export default function Page() {
 			`${metadataDetails.data.mangaSpecifics.chapters} chapters`,
 		metadataDetails.data?.mangaSpecifics?.volumes &&
 			`${metadataDetails.data.mangaSpecifics.volumes} volumes`,
+		metadataDetails.data?.comicBookSpecifics?.pageCount &&
+			`${metadataDetails.data.comicBookSpecifics.pageCount} pages`,
 		metadataDetails.data?.movieSpecifics?.runtime &&
 			humanizeDuration(
 				dayjsLib
@@ -395,13 +424,13 @@ export default function Page() {
 				<>
 					<DisplayShowSeasonEpisodesModal
 						openedShowSeason={openedShowSeason}
-						metadataDetails={metadataDetails.data}
+						metadataId={loaderData.metadataId}
 						setOpenedShowSeason={setOpenedShowSeason}
-						userMetadataDetails={userMetadataDetails.data}
 					/>
 					<MediaDetailsLayout
 						title={title}
 						assets={metadataDetails.data.assets}
+						extraImage={metadataImageTranslation}
 						isPartialStatusActive={isMetadataPartialStatusActive}
 						externalLink={{
 							lot: metadataDetails.data.lot,
@@ -478,6 +507,8 @@ export default function Page() {
 													MediaSource.Openlibrary,
 													MediaSource.YoutubeMusic,
 													MediaSource.GiantBomb,
+													MediaSource.MusicBrainz,
+													MediaSource.Metron,
 													() => undefined,
 												)
 												.exhaustive()}
@@ -540,9 +571,7 @@ export default function Page() {
 									value="actions"
 									leftSection={<IconUser size={16} />}
 									onClick={() => advanceOnboardingTourStep()}
-									className={
-										OnboardingTourStepTargets.MetadataDetailsActionsTab
-									}
+									className={OnboardingTourStepTarget.MetadataDetailsActionsTab}
 								>
 									Actions
 								</Tabs.Tab>
@@ -848,12 +877,10 @@ export default function Page() {
 												w="100%"
 												onClick={() => {
 													setEntityToReview({
+														entityTitle: title,
 														entityLot: EntityLot.Metadata,
 														entityId: loaderData.metadataId,
 														metadataLot: metadataDetails.data.lot,
-														entityTitle:
-															metadataTranslations?.title ||
-															metadataDetails.data.title,
 														existingReview: {
 															showExtraInformation: {
 																episode:
@@ -979,8 +1006,7 @@ export default function Page() {
 													history={history}
 													reviewsVirtuosoRef={reviewsVirtuosoRef}
 													podcastVirtuosoRef={podcastVirtuosoRef}
-													metadataDetails={metadataDetails.data}
-													userMetadataDetails={userMetadataDetails.data}
+													metadataId={loaderData.metadataId}
 												/>
 											)}
 										/>
@@ -999,7 +1025,6 @@ export default function Page() {
 												seasonIdx={seasonIdx}
 												key={season.seasonNumber}
 												metadataId={loaderData.metadataId}
-												userMetadataDetails={userMetadataDetails.data}
 												openSeasonModal={() => setOpenedShowSeason(seasonIdx)}
 											/>
 										)}
@@ -1016,10 +1041,7 @@ export default function Page() {
 												key={podcastEpisode.id}
 												episode={podcastEpisode}
 												index={podcastEpisodeIdx}
-												podcastProgress={
-													userMetadataDetails.data.podcastProgress
-												}
-												metadataDetails={metadataDetails.data}
+												metadataId={loaderData.metadataId}
 											/>
 										)}
 									/>
@@ -1035,10 +1057,10 @@ export default function Page() {
 												<ReviewItemDisplay
 													key={r.id}
 													review={r}
+													title={title}
 													lot={metadataDetails.data.lot}
 													entityLot={EntityLot.Metadata}
 													entityId={loaderData.metadataId}
-													title={metadataDetails.data.title}
 												/>
 											)}
 										/>

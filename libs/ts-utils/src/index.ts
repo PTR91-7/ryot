@@ -21,6 +21,7 @@ import isPlainObject from "lodash/isPlainObject";
 import isString from "lodash/isString";
 import kebabCase from "lodash/kebabCase";
 import mapValues from "lodash/mapValues";
+import memoize from "lodash/memoize";
 import mergeWith from "lodash/mergeWith";
 import omitBy from "lodash/omitBy";
 import pickBy from "lodash/pickBy";
@@ -35,7 +36,7 @@ import union from "lodash/union";
 import type { Params } from "react-router";
 import { twMerge } from "tailwind-merge";
 import invariant from "tiny-invariant";
-import { type ZodTypeAny, type output, z } from "zod";
+import { type output, type ZodTypeAny, z } from "zod";
 
 export const zodBoolAsString = z
 	.string()
@@ -153,6 +154,7 @@ export {
 	isString,
 	kebabCase,
 	mapValues,
+	memoize,
 	mergeWith,
 	omitBy,
 	pickBy,

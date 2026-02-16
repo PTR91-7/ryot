@@ -1,21 +1,22 @@
 import { Environment, Paddle } from "@paddle/paddle-node-sdk";
 import { render } from "@react-email/components";
 import { formatDateToNaiveDate } from "@ryot/ts-utils/index";
-import { Unkey } from "@unkey/api";
 import dayjs, { type Dayjs } from "dayjs";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { createTransport } from "nodemailer";
 import * as openidClient from "openid-client";
 import type { ReactElement } from "react";
+import { data } from "react-router";
 import { match } from "ts-pattern";
 import z from "zod";
-import * as schema from "~/drizzle/schema.server";
 import type { TPlanTypes } from "~/drizzle/schema.server";
+import * as schema from "~/drizzle/schema.server";
 import {
+	getDb,
+	getPrices,
+	getServerVariables,
+	getUnkeyClient,
 	IS_DEVELOPMENT_ENV,
-	db,
-	prices,
-	serverVariables,
 	websiteAuthCookie,
 } from "./config.server";
 
@@ -33,7 +34,7 @@ export const getClientIp = (request: Request): string | undefined => {
 };
 
 export const getProductAndPlanTypeByPriceId = (priceId: string) => {
-	for (const product of prices)
+	for (const product of getPrices())
 		for (const price of product.prices)
 			if (price.priceId === priceId)
 				return { productType: product.type, planType: price.name };
@@ -41,6 +42,7 @@ export const getProductAndPlanTypeByPriceId = (priceId: string) => {
 };
 
 export const oauthConfig = async () => {
+	const serverVariables = getServerVariables();
 	const config = await openidClient.discovery(
 		new URL(serverVariables.SERVER_OIDC_ISSUER_URL),
 		serverVariables.SERVER_OIDC_CLIENT_ID,
@@ -49,12 +51,14 @@ export const oauthConfig = async () => {
 	return config;
 };
 
-export const getPaddleServerClient = () =>
-	new Paddle(serverVariables.PADDLE_SERVER_TOKEN, {
+export const getPaddleServerClient = () => {
+	const serverVariables = getServerVariables();
+	return new Paddle(serverVariables.PADDLE_SERVER_TOKEN, {
 		environment: serverVariables.PADDLE_SANDBOX
 			? Environment.sandbox
 			: undefined,
 	});
+};
 
 export const sendEmail = async (input: {
 	cc?: string;
@@ -66,6 +70,7 @@ export const sendEmail = async (input: {
 		console.warn("Email sending is disabled in development mode.");
 		return "dev-mode-email";
 	}
+	const serverVariables = getServerVariables();
 	const client = createTransport({
 		host: serverVariables.SERVER_SMTP_SERVER,
 		secure: serverVariables.SERVER_SMTP_SECURE,
@@ -114,7 +119,7 @@ export const getCustomerFromCookie = async (request: Request) => {
 	if (!cookie || Object.keys(cookie).length === 0) return null;
 	const customerId = z.string().parse(cookie);
 
-	return await db.query.customers.findFirst({
+	return await getDb().query.customers.findFirst({
 		where: eq(schema.customers.id, customerId),
 	});
 };
@@ -123,7 +128,7 @@ export const getCustomerWithActivePurchase = async (request: Request) => {
 	const customer = await getCustomerFromCookie(request);
 	if (!customer) return null;
 
-	const activePurchase = await db.query.customerPurchases.findFirst({
+	const activePurchase = await getDb().query.customerPurchases.findFirst({
 		orderBy: [desc(schema.customerPurchases.createdOn)],
 		where: and(
 			eq(schema.customerPurchases.customerId, customer.id),
@@ -153,7 +158,8 @@ export const createUnkeyKey = async (
 	customer: typeof schema.customers.$inferSelect,
 	renewOn?: Dayjs,
 ) => {
-	const unkey = new Unkey({ rootKey: serverVariables.UNKEY_ROOT_KEY });
+	const unkey = getUnkeyClient();
+	const serverVariables = getServerVariables();
 	const created = await unkey.keys.createKey({
 		name: customer.email,
 		externalId: customer.id,
@@ -167,6 +173,7 @@ export const verifyTurnstileToken = async (input: {
 	token: string;
 	remoteIp?: string;
 }) => {
+	const serverVariables = getServerVariables();
 	try {
 		const response = await fetch(
 			"https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -183,10 +190,23 @@ export const verifyTurnstileToken = async (input: {
 			},
 		);
 
-		const data = await response.json();
-		return data.success === true;
+		const jsonData = await response.json();
+		return jsonData.success === true;
 	} catch (error) {
 		console.error("Turnstile verification error:", error);
 		return false;
+	}
+};
+
+export const validateTurnstile = async (request: Request, token: string) => {
+	const isTurnstileValid = await verifyTurnstileToken({
+		token,
+		remoteIp: getClientIp(request),
+	});
+	if (!isTurnstileValid) {
+		throw data(
+			{ message: "CAPTCHA verification failed. Please try again." },
+			{ status: 400 },
+		);
 	}
 };

@@ -10,6 +10,7 @@ use sea_orm::{
     QueryFilter, QueryOrder,
 };
 use supporting_service::SupportingService;
+use traits::TraceOk;
 use user_models::NotificationPlatformSpecifics;
 
 pub async fn update_user_notification_platform(
@@ -66,7 +67,9 @@ pub async fn test_user_notification_platforms(
         .await?;
     for platform in notifications {
         let msg = format!("This is a test notification for platform: {}", platform.lot);
-        send_notification(platform.platform_specifics, &msg).await?;
+        send_notification(&msg, &ss.config, platform.platform_specifics)
+            .await
+            .trace_ok();
     }
     Ok(true)
 }
@@ -99,8 +102,9 @@ pub async fn create_user_notification_platform(
             api_token: input.api_token.unwrap(),
         },
         NotificationPlatformLot::PushOver => NotificationPlatformSpecifics::PushOver {
-            key: input.api_token.unwrap(),
+            device: input.device,
             app_key: input.auth_header,
+            key: input.api_token.unwrap(),
         },
         NotificationPlatformLot::PushSafer => NotificationPlatformSpecifics::PushSafer {
             key: input.api_token.unwrap(),
@@ -109,8 +113,12 @@ pub async fn create_user_notification_platform(
             bot_token: input.api_token.unwrap(),
             chat_id: input.chat_id.unwrap(),
         },
+        NotificationPlatformLot::Email => NotificationPlatformSpecifics::Email {
+            email: input.api_token.unwrap(),
+        },
     };
     let description = match &specifics {
+        NotificationPlatformSpecifics::Email { email } => email.to_owned(),
         NotificationPlatformSpecifics::Apprise { url, key } => {
             format!("URL: {url}, Key: {key}")
         }
@@ -126,8 +134,12 @@ pub async fn create_user_notification_platform(
         NotificationPlatformSpecifics::PushBullet { api_token } => {
             format!("API Token: {api_token}")
         }
-        NotificationPlatformSpecifics::PushOver { key, app_key } => {
-            format!("Key: {key}, App Key: {app_key:?}")
+        NotificationPlatformSpecifics::PushOver {
+            key,
+            device,
+            app_key,
+        } => {
+            format!("Key: {key}, App Key: {app_key:?}, Device: {device:?}")
         }
         NotificationPlatformSpecifics::PushSafer { key } => {
             format!("Key: {key}")

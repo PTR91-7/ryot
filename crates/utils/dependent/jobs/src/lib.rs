@@ -10,7 +10,6 @@ use database_models::{
     user_to_entity,
 };
 use database_utils::admin_account_guard;
-use enum_models::EntityLot;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, prelude::Expr};
 use supporting_service::SupportingService;
 
@@ -53,20 +52,10 @@ pub async fn deploy_background_job(
                 .await?;
             let update = Metadata::update_many()
                 .col_expr(metadata::Column::IsPartial, Expr::value(true))
-                .filter(metadata::Column::Id.is_in(many_metadata.clone()))
+                .filter(metadata::Column::Id.is_in(many_metadata))
                 .exec(&ss.db)
                 .await?;
             ryot_log!(debug, "Marked {} metadata as partial", update.rows_affected);
-            for metadata_id in many_metadata {
-                deploy_update_media_entity_job(
-                    EntityWithLot {
-                        entity_id: metadata_id,
-                        entity_lot: EntityLot::Metadata,
-                    },
-                    ss,
-                )
-                .await?;
-            }
         }
         BackgroundJob::UpdateAllExercises => {
             ss.perform_application_job(ApplicationJob::Mp(MpApplicationJob::UpdateExerciseLibrary))
@@ -84,7 +73,7 @@ pub async fn deploy_background_job(
             ))
             .await?;
         }
-        BackgroundJob::CalculateUserActivitiesAndSummary => {
+        BackgroundJob::RecalculateUserActivitiesAndSummary => {
             ss.perform_application_job(ApplicationJob::Hp(
                 HpApplicationJob::RecalculateUserActivitiesAndSummary(user_id.to_owned(), true),
             ))

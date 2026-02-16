@@ -11,11 +11,11 @@ import {
 	Group,
 	Image,
 	type MantineColorScheme,
+	rem,
 	ScrollArea,
 	Text,
 	Tooltip,
 	UnstyledButton,
-	rem,
 	useMantineTheme,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -68,16 +68,16 @@ import {
 import { forcedDashboardPath } from "~/lib/shared/ui-utils";
 import { useOpenedSidebarLinks } from "~/lib/state/general";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { FitnessAction } from "~/lib/types";
 import {
+	colorSchemeCookie,
 	getCookieValue,
 	getCoreDetails,
 	redirectIfNotAuthenticatedOrUpdated,
 } from "~/lib/utilities.server";
-import { colorSchemeCookie } from "~/lib/utilities.server";
 import classes from "~/styles/dashboard.module.css";
 import type { Route } from "./+types/_dashboard";
 
@@ -257,7 +257,7 @@ export default function Layout() {
 								icon={IconDeviceSpeaker}
 								toggle={toggleMobileNavbar}
 								opened={openedSidebarLinks.media || false}
-								tourControlTarget={OnboardingTourStepTargets.Welcome}
+								tourControlTarget={OnboardingTourStepTarget.Welcome}
 								setOpened={(k) =>
 									setOpenedSidebarLinks(
 										produce(openedSidebarLinks, (draft) => {
@@ -274,7 +274,7 @@ export default function Layout() {
 								icon={IconStretching}
 								toggle={toggleMobileNavbar}
 								opened={openedSidebarLinks.fitness || false}
-								tourControlTarget={OnboardingTourStepTargets.OpenFitnessSidebar}
+								tourControlTarget={OnboardingTourStepTarget.OpenFitnessSidebar}
 								setOpened={(k) =>
 									setOpenedSidebarLinks(
 										produce(openedSidebarLinks, (draft) => {
@@ -293,7 +293,7 @@ export default function Layout() {
 								toggle={toggleMobileNavbar}
 								href={$path("/analytics")}
 								tourControlTarget={
-									OnboardingTourStepTargets.ClickOnAnalyticsSidebarSection
+									OnboardingTourStepTarget.ClickOnAnalyticsSidebarSection
 								}
 							/>
 						) : null}
@@ -316,7 +316,7 @@ export default function Layout() {
 								toggle={toggleMobileNavbar}
 								href={$path("/collections/list")}
 								tourControlTarget={
-									OnboardingTourStepTargets.ClickOnCollectionsSidebarSection
+									OnboardingTourStepTarget.ClickOnCollectionsSidebarSection
 								}
 							/>
 						) : null}
@@ -328,9 +328,7 @@ export default function Layout() {
 								links={settingsLinks}
 								toggle={toggleMobileNavbar}
 								opened={openedSidebarLinks.settings || false}
-								tourControlTarget={
-									OnboardingTourStepTargets.OpenSettingsSidebar
-								}
+								tourControlTarget={OnboardingTourStepTarget.OpenSettingsSidebar}
 								setOpened={(k) =>
 									setOpenedSidebarLinks(
 										produce(openedSidebarLinks, (draft) => {

@@ -48,6 +48,8 @@ pub struct Model {
     pub show_duration: i32,
     pub video_game_count: i32,
     pub video_game_duration: i32,
+    pub comic_book_count: i32,
+    pub comic_book_pages: i32,
     pub visual_novel_count: i32,
     pub visual_novel_duration: i32,
     pub workout_personal_bests: i32,
@@ -60,7 +62,7 @@ pub struct Model {
     pub total_count: i32,
     pub total_duration: i32,
     pub workout_calories_burnt: i32,
-    #[sea_orm(column_type = "Json")]
+    #[sea_orm(column_type = "JsonBinary")]
     pub hour_records: Vec<DailyUserActivityHourRecord>,
     pub workout_exercises: Vec<String>,
     pub workout_muscles: Vec<ExerciseMuscle>,

@@ -1,13 +1,22 @@
-import { Checkbox, Group, Input, NumberInput, Text } from "@mantine/core";
+import { Checkbox, Group, Input, NumberInput, rem, Text } from "@mantine/core";
 import { MediaLot } from "@ryot/generated/graphql/backend/graphql";
+import { useMetadataDetails } from "~/lib/shared/hooks";
 import { useMetadataProgressUpdate } from "~/lib/state/media";
 import type { MediaFormProps } from "../utils/form-types";
 
 export const MangaForm = (props: MediaFormProps) => {
 	const { metadataToUpdate, updateMetadataToUpdate } =
 		useMetadataProgressUpdate();
-	if (props.metadataDetails.lot !== MediaLot.Manga || !metadataToUpdate)
+	const [{ data: metadataDetails }] = useMetadataDetails(props.metadataId);
+	if (
+		!metadataDetails ||
+		metadataDetails.lot !== MediaLot.Manga ||
+		!metadataToUpdate
+	)
 		return null;
+
+	const totalVolumes = metadataDetails.mangaSpecifics?.volumes;
+	const totalChapters = metadataDetails.mangaSpecifics?.chapters;
 
 	return (
 		<>
@@ -15,12 +24,18 @@ export const MangaForm = (props: MediaFormProps) => {
 				required
 				label="Enter either the chapter number or the volume number"
 			>
-				<Group wrap="nowrap">
+				<Group wrap="nowrap" mt={4}>
 					<NumberInput
 						size="xs"
 						hideControls
 						description="Chapter"
+						rightSectionWidth={rem(60)}
 						value={metadataToUpdate.mangaChapterNumber?.toString()}
+						rightSection={
+							totalChapters ? (
+								<Text size="xs">Total: {totalChapters}</Text>
+							) : undefined
+						}
 						onChange={(e) => {
 							updateMetadataToUpdate({
 								...metadataToUpdate,
@@ -35,7 +50,13 @@ export const MangaForm = (props: MediaFormProps) => {
 						size="xs"
 						hideControls
 						description="Volume"
+						rightSectionWidth={rem(60)}
 						value={metadataToUpdate.mangaVolumeNumber?.toString()}
+						rightSection={
+							totalVolumes ? (
+								<Text size="xs">Total: {totalVolumes}</Text>
+							) : undefined
+						}
 						onChange={(e) => {
 							updateMetadataToUpdate({
 								...metadataToUpdate,

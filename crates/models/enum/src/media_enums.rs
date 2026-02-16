@@ -38,18 +38,19 @@ pub enum MediaLot {
     Podcast,
     AudioBook,
     VideoGame,
+    ComicBook,
     VisualNovel,
 }
 
 meta! {
     MediaLot, Vec<MediaSource>;
 
+    ComicBook, vec![MediaSource::Metron];
     VisualNovel, vec![MediaSource::Vndb];
     AudioBook, vec![MediaSource::Audible];
     Show, vec![MediaSource::Tmdb, MediaSource::Tvdb];
     Movie, vec![MediaSource::Tmdb, MediaSource::Tvdb];
     VideoGame, vec![MediaSource::Igdb, MediaSource::GiantBomb];
-    Music, vec![MediaSource::YoutubeMusic, MediaSource::Spotify];
     Anime, vec![
         MediaSource::Anilist,
         MediaSource::Myanimelist,
@@ -57,6 +58,11 @@ meta! {
     Podcast, vec![
         MediaSource::Itunes,
         MediaSource::Listennotes,
+    ];
+    Music, vec![
+        MediaSource::Spotify,
+        MediaSource::MusicBrainz,
+        MediaSource::YoutubeMusic,
     ];
     Book, vec![
         MediaSource::Hardcover,
@@ -99,10 +105,12 @@ pub enum MediaSource {
     Vndb,
     #[default]
     Custom,
+    Metron,
     Itunes,
     Anilist,
     Audible,
     Spotify,
+    MusicBrainz,
     GiantBomb,
     Hardcover,
     Myanimelist,
@@ -131,6 +139,8 @@ meta! {
     Spotify, Some(MediaLot::Music);
     Igdb, Some(MediaLot::VideoGame);
     Hardcover, Some(MediaLot::Book);
+    Metron, Some(MediaLot::ComicBook);
+    MusicBrainz, Some(MediaLot::Music);
     YoutubeMusic, Some(MediaLot::Music);
     GiantBomb, Some(MediaLot::VideoGame);
 }

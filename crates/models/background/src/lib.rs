@@ -1,5 +1,9 @@
 use common_models::{ChangeCollectionToEntitiesInput, EntityWithLot};
-use media_models::{DeployImportJobInput, MetadataProgressUpdateInput, ReviewPostedEvent};
+use enum_models::{EntityLot, EntityTranslationVariant};
+use media_models::{
+    DeployImportJobInput, MetadataProgressUpdateInput, PodcastTranslationExtraInformation,
+    ReviewPostedEvent, ShowTranslationExtraInformation,
+};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 use uuid::Uuid;
@@ -10,8 +14,17 @@ pub enum HpApplicationJob {
     SyncUserIntegrationsData(String),
     RecalculateUserActivitiesAndSummary(String, bool),
     AddEntitiesToCollection(String, ChangeCollectionToEntitiesInput),
-    BulkMetadataProgressUpdate(String, Vec<MetadataProgressUpdateInput>),
     RemoveEntitiesFromCollection(String, ChangeCollectionToEntitiesInput),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct UpdateMediaTranslationJobInput {
+    pub user_id: String,
+    pub entity_id: String,
+    pub entity_lot: EntityLot,
+    pub variant: EntityTranslationVariant,
+    pub show_extra_information: Option<ShowTranslationExtraInformation>,
+    pub podcast_extra_information: Option<PodcastTranslationExtraInformation>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Display, Clone)]
@@ -23,8 +36,7 @@ pub enum MpApplicationJob {
     PerformBackgroundTasks,
     ReviseUserWorkouts(String),
     UpdateMediaDetails(EntityWithLot),
-    UpdateMediaTranslations(String, EntityWithLot),
-    ImportFromExternalSource(String, Box<DeployImportJobInput>),
+    UpdateMediaTranslations(UpdateMediaTranslationJobInput),
 }
 
 #[derive(Debug, Deserialize, Serialize, Display, Clone)]
@@ -37,6 +49,8 @@ pub enum LpApplicationJob {
 #[derive(Debug, Deserialize, Serialize, Display, Clone)]
 pub enum SingleApplicationJob {
     ProcessIntegrationWebhook(String, String),
+    ImportFromExternalSource(String, Box<DeployImportJobInput>),
+    BulkMetadataProgressUpdate(String, Vec<MetadataProgressUpdateInput>),
 }
 
 #[derive(Debug, Deserialize, Serialize, Display, Clone)]
@@ -46,6 +60,3 @@ pub enum ApplicationJob {
     Mp(MpApplicationJob),
     Single(SingleApplicationJob),
 }
-
-#[derive(Debug, Default)]
-pub struct ScheduledJob;

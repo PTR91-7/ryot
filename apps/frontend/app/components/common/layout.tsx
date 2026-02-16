@@ -52,6 +52,7 @@ export const MediaDetailsLayout = (props: {
 	title: string;
 	children: ReactNode;
 	assets: EntityAssets;
+	extraImage?: string | null;
 	isPartialStatusActive: boolean;
 	externalLink: {
 		lot?: MediaLot;
@@ -59,14 +60,15 @@ export const MediaDetailsLayout = (props: {
 		href?: string | null;
 	};
 }) => {
-	const [activeImageId, setActiveImageId] = useState(0);
 	const fallbackImageUrl = useFallbackImageUrl();
+	const [activeImageId, setActiveImageId] = useState(0);
 
 	const s3PresignedUrls = useS3PresignedUrls(props.assets.s3Images);
 	const images = [
+		props.extraImage,
 		...props.assets.remoteImages,
 		...(s3PresignedUrls.data || []),
-	];
+	].filter(Boolean);
 
 	const providerImage = getProviderSourceImage(props.externalLink.source);
 

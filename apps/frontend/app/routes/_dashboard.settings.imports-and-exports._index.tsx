@@ -3,6 +3,7 @@ import {
 	Anchor,
 	Box,
 	Button,
+	Checkbox,
 	Container,
 	Divider,
 	Drawer,
@@ -22,6 +23,7 @@ import {
 } from "@mantine/core";
 import { useInViewport } from "@mantine/hooks";
 import {
+	DeleteUserImportReportDocument,
 	DeployExportJobDocument,
 	DeployImportJobDocument,
 	ImportSource,
@@ -36,11 +38,11 @@ import {
 	processSubmission,
 } from "@ryot/ts-utils";
 import { IconDownload, IconEye, IconTrash } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { filesize } from "filesize";
 import { DataTable } from "mantine-datatable";
 import { useMemo, useState } from "react";
-import { Form, data } from "react-router";
+import { data, Form } from "react-router";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
 import { z } from "zod";
@@ -168,15 +170,20 @@ const apiUrlImportFormSchema = z.object({
 
 const apiKeySchema = z.object({ apiKey: z.string() });
 
-const urlAndKeyImportFormSchema = apiUrlImportFormSchema.extend(
-	apiKeySchema.shape,
-);
+const allowInsecureConnectionsSchema = z.object({
+	allowInsecureConnections: z.boolean().optional(),
+});
+
+const urlAndKeyImportFormSchema = apiUrlImportFormSchema
+	.extend(apiKeySchema.shape)
+	.extend(allowInsecureConnectionsSchema.shape);
 
 const optionalPasswordSchema = z.object({ password: z.string().optional() });
 
 const jellyfinImportFormSchema = usernameImportFormSchema
 	.extend(apiUrlImportFormSchema.shape)
-	.extend(optionalPasswordSchema.shape);
+	.extend(optionalPasswordSchema.shape)
+	.extend(allowInsecureConnectionsSchema.shape);
 
 const genericCsvImportFormSchema = z.object({ csvPath: z.string() });
 
@@ -223,6 +230,14 @@ export default function Page() {
 			clientGqlService
 				.request(UserImportReportsDocument)
 				.then((u) => u.userImportReports),
+	});
+
+	const deleteImportReportMutation = useMutation({
+		onSuccess: () => userImportsReportsQuery.refetch(),
+		mutationFn: (importReportId: string) =>
+			clientGqlService
+				.request(DeleteUserImportReportDocument, { importReportId })
+				.then((g) => g.deleteUserImportReport),
 	});
 
 	const userExportsQuery = useQuery({
@@ -280,15 +295,23 @@ export default function Page() {
 													() => (
 														<>
 															<TextInput
-																label="Instance Url"
 																required
 																name="apiUrl"
+																label="Instance Url"
+																description="Also allows IP addresses"
+																placeholder="https://plex.mydomain.com"
 															/>
 															<TextInput
 																mt="sm"
-																label="API Key"
 																required
 																name="apiKey"
+																label="API Key"
+															/>
+															<Checkbox
+																mt="sm"
+																name="allowInsecureConnections"
+																label="Allow insecure connections (skip certificate validation)"
+																description="⚠️ Only enable this for self-signed certificates on trusted local networks"
 															/>
 														</>
 													),
@@ -355,6 +378,8 @@ export default function Page() {
 															required
 															name="apiUrl"
 															label="Instance Url"
+															description="Also allows IP addresses"
+															placeholder="https://jellyfin.mydomain.com"
 														/>
 														<TextInput
 															required
@@ -365,6 +390,12 @@ export default function Page() {
 															mt="sm"
 															name="password"
 															label="Password"
+														/>
+														<Checkbox
+															mt="sm"
+															name="allowInsecureConnections"
+															label="Allow insecure connections (skip certificate validation)"
+															description="⚠️ Only enable this for self-signed certificates on trusted local networks"
 														/>
 													</>
 												))
@@ -410,11 +441,11 @@ export default function Page() {
 													<>
 														<FileInput
 															name="animePath"
-															label="Anime export file"
+															label="Anime export file (GZipped XML format)"
 														/>
 														<FileInput
 															name="mangaPath"
-															label="Manga export file"
+															label="Manga export file (GZipped XML format)"
 														/>
 													</>
 												))
@@ -540,13 +571,33 @@ export default function Page() {
 															) : null}
 														</Stack>
 														{!isInProgress && (
-															<ActionIcon
-																color="blue"
-																variant="transparent"
-																onClick={() => setOpenDrawerId(report.id)}
-															>
-																<IconEye />
-															</ActionIcon>
+															<>
+																<ActionIcon
+																	color="blue"
+																	variant="transparent"
+																	onClick={() => setOpenDrawerId(report.id)}
+																>
+																	<IconEye />
+																</ActionIcon>
+																<ActionIcon
+																	color="red"
+																	variant="transparent"
+																	disabled={
+																		deleteImportReportMutation.isPending
+																	}
+																	onClick={() => {
+																		openConfirmationModal(
+																			"Are you sure you want to delete this import report? This action is irreversible.",
+																			() =>
+																				deleteImportReportMutation.mutate(
+																					report.id,
+																				),
+																		);
+																	}}
+																>
+																	<IconTrash />
+																</ActionIcon>
+															</>
 														)}
 													</Group>
 													<Drawer

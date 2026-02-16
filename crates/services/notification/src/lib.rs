@@ -1,15 +1,27 @@
-use std::env;
+use std::{env, time::Duration};
 
 use anyhow::Result;
+use askama::Template;
 use common_utils::{APPLICATION_JSON_HEADER, AVATAR_URL, PROJECT_NAME, ryot_log};
+use config_definition::AppConfig;
 use convert_case::{Case, Casing};
+use lettre::{
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{MultiPart, SinglePart, header},
+    transport::smtp::authentication::Credentials,
+};
 use reqwest::{
     Client,
     header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue},
 };
+use serde::{Deserialize, Serialize};
 use user_models::NotificationPlatformSpecifics;
 
-pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &str) -> Result<()> {
+pub async fn send_notification(
+    msg: &str,
+    config: &AppConfig,
+    specifics: NotificationPlatformSpecifics,
+) -> Result<()> {
     let project_name = PROJECT_NAME.to_case(Case::Title);
     let client = Client::new();
     if env::var("DISABLE_NOTIFICATIONS").is_ok() {
@@ -21,10 +33,7 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
             client
                 .post(format!("{url}/notify/{key}"))
                 .header(CONTENT_TYPE, APPLICATION_JSON_HEADER.clone())
-                .json(&serde_json::json!({
-                    "body": msg,
-                    "title": project_name,
-                }))
+                .json(&serde_json::json!({ "body": msg, "title": project_name }))
                 .send()
                 .await?;
         }
@@ -51,19 +60,15 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "message": msg,
                     "title": project_name,
                     "priority": priority.unwrap_or(5),
-                    "extras": {
-                        "client::notification": {
-                          "bigImageUrl": AVATAR_URL
-                        }
-                     }
+                    "extras": { "client::notification": { "bigImageUrl": AVATAR_URL } }
                 }))
                 .send()
                 .await?;
         }
         NotificationPlatformSpecifics::Ntfy {
             url,
-            priority,
             topic,
+            priority,
             auth_header,
         } => {
             let mut request = client
@@ -72,8 +77,8 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     url.clone().unwrap_or_else(|| "https://ntfy.sh".to_owned()),
                     topic
                 ))
-                .header("Title", project_name)
                 .header("Attach", AVATAR_URL)
+                .header("Title", project_name)
                 .header(
                     "Priority",
                     priority
@@ -94,24 +99,32 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                 .header("Access-Token", api_token)
                 .json(&serde_json::json!({
                     "body": msg,
+                    "type": "note",
                     "title": project_name,
-                    "type": "note"
                 }))
                 .send()
                 .await?;
         }
-        NotificationPlatformSpecifics::PushOver { key, app_key } => {
+        NotificationPlatformSpecifics::PushOver {
+            key,
+            device,
+            app_key,
+        } => {
+            let mut params = vec![
+                ("user".to_owned(), key),
+                ("title".to_owned(), project_name),
+                ("message".to_owned(), msg.to_string()),
+                (
+                    "token".to_owned(),
+                    app_key.unwrap_or_else(|| "abd1semr21hv1i5j5kfkm23wf1kd4u".to_string()),
+                ),
+            ];
+            if let Some(device) = device {
+                params.push(("device".to_owned(), device));
+            }
             client
                 .post("https://api.pushover.net/1/messages.json")
-                .query(&[
-                    ("user", &key),
-                    ("title", &project_name),
-                    ("message", &msg.to_string()),
-                    (
-                        "token",
-                        &app_key.unwrap_or_else(|| "abd1semr21hv1i5j5kfkm23wf1kd4u".to_string()),
-                    ),
-                ])
+                .query(&params)
                 .send()
                 .await?;
         }
@@ -128,12 +141,48 @@ pub async fn send_notification(specifics: NotificationPlatformSpecifics, msg: &s
                     "https://api.telegram.org/bot{bot_token}/sendMessage"
                 ))
                 .json(&serde_json::json!({
-                    "chat_id": chat_id,
                     "text": msg,
+                    "chat_id": chat_id,
                     "parse_mode": "Markdown"
                 }))
                 .send()
                 .await?;
+        }
+        NotificationPlatformSpecifics::Email { email } => {
+            #[derive(Template, Serialize, Deserialize, Debug, Clone)]
+            #[template(path = "generic.html")]
+            struct GenericHtml {
+                pub generic_message: String,
+            }
+
+            let body = GenericHtml {
+                generic_message: msg.to_owned(),
+            }
+            .render()?;
+
+            let credentials = Credentials::new(
+                config.server.smtp.user.to_owned(),
+                config.server.smtp.password.to_owned(),
+            );
+
+            let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.server.smtp.server)?
+                .timeout(Some(Duration::from_secs(10)))
+                .credentials(credentials)
+                .build();
+
+            let mailbox = config.server.smtp.mailbox.parse()?;
+            let email_msg = Message::builder()
+                .from(mailbox)
+                .to(email.parse()?)
+                .subject(format!("{} notification", project_name))
+                .multipart(
+                    MultiPart::mixed().singlepart(
+                        SinglePart::builder()
+                            .header(header::ContentType::TEXT_HTML)
+                            .body(body),
+                    ),
+                )?;
+            mailer.send(email_msg).await?;
         }
     }
     Ok(())

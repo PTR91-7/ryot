@@ -36,13 +36,13 @@ import {
 	zodCheckboxAsString,
 } from "@ryot/ts-utils";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
-import { Form, data, useLoaderData } from "react-router";
+import { data, Form, useLoaderData } from "react-router";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
 import { z } from "zod";
 import { useSavedForm } from "~/lib/hooks/use-saved-form";
 import { dayjsLib } from "~/lib/shared/date-utils";
-import { useConfirmSubmit } from "~/lib/shared/hooks";
+import { useConfirmSubmit, useCoreDetails } from "~/lib/shared/hooks";
 import {
 	convertEnumToSelectData,
 	openConfirmationModal,
@@ -130,12 +130,13 @@ export const action = async ({ request }: Route.ActionArgs) => {
 const deleteSchema = z.object({ notificationId: z.string() });
 
 const createSchema = z.object({
-	lot: z.enum(NotificationPlatformLot),
 	chatId: z.string().optional(),
+	device: z.string().optional(),
 	baseUrl: z.string().optional(),
+	priority: z.number().optional(),
 	apiToken: z.string().optional(),
 	authHeader: z.string().optional(),
-	priority: z.number().optional(),
+	lot: z.enum(NotificationPlatformLot),
 });
 
 const updateSchema = z.object({
@@ -147,6 +148,7 @@ const updateSchema = z.object({
 });
 
 export default function Page() {
+	const coreDetails = useCoreDetails();
 	const loaderData = useLoaderData<typeof loader>();
 	const [
 		createUserNotificationPlatformModalOpened,
@@ -158,6 +160,7 @@ export default function Page() {
 
 	const createForm = useSavedForm<{
 		chatId?: string;
+		device?: string;
 		baseUrl?: string;
 		apiToken?: string;
 		priority?: number;
@@ -168,6 +171,7 @@ export default function Page() {
 		validate: { lot: (value) => (value ? null : "Please select a platform") },
 		initialValues: {
 			lot: "",
+			device: "",
 			chatId: "",
 			baseUrl: "",
 			apiToken: "",
@@ -191,10 +195,10 @@ export default function Page() {
 					method="POST"
 					component={Form}
 					action={withQuery(".", { intent: "create" })}
-					onSubmit={createForm.onSubmit(() => {
+					onSubmit={() => {
 						closeCreateUserNotificationPlatformModal();
 						createForm.clearSavedState();
-					})}
+					}}
 				>
 					<input hidden name="lot" value={createForm.values.lot} />
 					<Stack>
@@ -257,6 +261,11 @@ export default function Page() {
 										<>
 											<TextInput label="User Key" required name="apiToken" />
 											<TextInput label="App Key" name="authHeader" />
+											<TextInput
+												name="device"
+												label="Device"
+												description="Device name or device group name to target"
+											/>
 										</>
 									))
 									.with(NotificationPlatformLot.PushSafer, () => (
@@ -268,6 +277,22 @@ export default function Page() {
 										<>
 											<TextInput label="Bot Token" required name="apiToken" />
 											<TextInput label="Chat ID" required name="chatId" />
+										</>
+									))
+									.with(NotificationPlatformLot.Email, () => (
+										<>
+											<TextInput
+												required
+												type="email"
+												name="apiToken"
+												label="Email Address"
+												disabled={!coreDetails.smtpEnabled}
+												description={
+													coreDetails.smtpEnabled
+														? "Email address to receive notifications"
+														: "SMTP is not enabled on this server"
+												}
+											/>
 										</>
 									))
 									.exhaustive()

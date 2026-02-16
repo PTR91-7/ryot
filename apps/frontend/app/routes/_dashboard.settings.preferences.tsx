@@ -4,6 +4,7 @@ import {
 	Alert,
 	Box,
 	Button,
+	Collapse,
 	Container,
 	Divider,
 	Group,
@@ -11,6 +12,7 @@ import {
 	MultiSelect,
 	NumberInput,
 	Paper,
+	rem,
 	SegmentedControl,
 	Select,
 	SimpleGrid,
@@ -21,7 +23,6 @@ import {
 	Text,
 	TextInput,
 	Title,
-	rem,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
@@ -49,6 +50,7 @@ import {
 	IconCheckbox,
 	IconGripVertical,
 	IconMinus,
+	IconSettings,
 	IconX,
 } from "@tabler/icons-react";
 import { useMutation } from "@tanstack/react-query";
@@ -65,18 +67,19 @@ import {
 	useInvalidateUserDetails,
 	useUserPreferences,
 } from "~/lib/shared/hooks";
-import { clientGqlService } from "~/lib/shared/react-query";
+import { clientGqlService, queryClient } from "~/lib/shared/react-query";
 import { convertEnumToSelectData } from "~/lib/shared/ui-utils";
 import { FitnessEntity } from "~/lib/types";
 import classes from "~/styles/preferences.module.css";
 import type { Route } from "./+types/_dashboard.settings.preferences";
 
+const EDITABLE_NUM_DAYS_AHEAD = [DashboardElementLot.Upcoming];
+const EDITABLE_DEDUPLICATE_MEDIA = [DashboardElementLot.Upcoming];
 const EDITABLE_NUM_ELEMENTS = [
 	DashboardElementLot.Upcoming,
 	DashboardElementLot.InProgress,
 	DashboardElementLot.Recommendations,
 ];
-const EDITABLE_DEDUPLICATE_MEDIA = [DashboardElementLot.Upcoming];
 
 const updateCollectionInArray = <T extends { lot: unknown; values: string[] }>(
 	array: T[],
@@ -171,9 +174,9 @@ export const meta = () => {
 	return [{ title: "Preferences | Ryot" }];
 };
 
-const notificationContent = {
-	title: "Invalid action",
+const disabledNotificationContent = {
 	color: "red",
+	title: "Invalid action",
 	message:
 		"Changing preferences is disabled for demo users. Please create an account to save your preferences.",
 };
@@ -196,7 +199,10 @@ export default function Page() {
 			await clientGqlService.request(UpdateUserPreferenceDocument, {
 				input: values,
 			});
-			await invalidateUserDetails();
+			await Promise.all([
+				invalidateUserDetails(),
+				queryClient.invalidateQueries(),
+			]);
 		},
 		onSuccess: () => {
 			notifications.show({
@@ -242,7 +248,7 @@ export default function Page() {
 					</Group>
 					{isEditDisabled ? (
 						<Alert icon={<IconAlertCircle />} variant="outline" color="violet">
-							{notificationContent.message}
+							{disabledNotificationContent.message}
 						</Alert>
 					) : null}
 					<Tabs
@@ -272,7 +278,7 @@ export default function Page() {
 										});
 										form.setFieldValue("general.dashboard", newOrder);
 									} else {
-										notifications.show(notificationContent);
+										notifications.show(disabledNotificationContent);
 									}
 								}}
 							>
@@ -658,29 +664,115 @@ export default function Page() {
 									}}
 								/>
 								<Divider />
-								<Stack gap="xs">
-									<Text size="sm">
-										The measurements you want to keep track of
-									</Text>
-									{form.values.fitness.measurements.statistics.map(
-										(s, index) => (
-											<Group
-												wrap="nowrap"
-												key={`${
-													// biome-ignore lint/suspicious/noArrayIndexKey: index is unique
-													index
-												}`}
-											>
+								<MeasurementsSection
+									form={form}
+									isEditDisabled={isEditDisabled}
+								/>
+							</Stack>
+						</Tabs.Panel>
+					</Tabs>
+				</Stack>
+			</form>
+		</Container>
+	);
+}
+
+const MeasurementsSection = (props: {
+	isEditDisabled: boolean;
+	form: ReturnType<typeof useForm<UserPreferences>>;
+}) => (
+	<Stack gap="xs">
+		<Group justify="space-between">
+			<Text size="sm">The measurements you want to keep track of</Text>
+			<Button
+				type="button"
+				variant="outline"
+				size="compact-xs"
+				disabled={!!props.isEditDisabled}
+				onClick={() =>
+					props.form.setFieldValue(
+						"fitness.measurements.statistics",
+						addMeasurementStatistic(
+							props.form.values.fitness.measurements.statistics,
+						),
+					)
+				}
+			>
+				Add
+			</Button>
+		</Group>
+		<Text size="xs" c="dimmed">
+			Removing a measurement will hide its past values from history. If you add
+			it again, those values will show back up.
+		</Text>
+		<DragDropContext
+			onDragEnd={({ destination, source }) => {
+				if (!props.isEditDisabled) {
+					const newOrder = reorder(
+						props.form.values.fitness.measurements.statistics,
+						{
+							from: source.index,
+							to: destination?.index || 0,
+						},
+					);
+					props.form.setFieldValue("fitness.measurements.statistics", newOrder);
+				} else {
+					notifications.show(disabledNotificationContent);
+				}
+			}}
+		>
+			<Droppable droppableId="measurements-list">
+				{(provided) => (
+					<Stack gap="xs" {...provided.droppableProps} ref={provided.innerRef}>
+						{props.form.values.fitness.measurements.statistics.map(
+							(s, index) => (
+								<Draggable
+									index={index}
+									key={`measurement-${
+										// biome-ignore lint/suspicious/noArrayIndexKey: index is unique
+										index
+									}`}
+									draggableId={`measurement-${index}`}
+								>
+									{(provided, snapshot) => (
+										<Paper
+											p="xs"
+											withBorder
+											ref={provided.innerRef}
+											{...provided.draggableProps}
+											className={cn({
+												[classes.itemDragging]: snapshot.isDragging,
+											})}
+										>
+											<Group wrap="nowrap">
+												<div
+													{...provided.dragHandleProps}
+													style={{
+														height: "100%",
+														cursor: "grab",
+														display: "flex",
+														alignItems: "center",
+													}}
+												>
+													<IconGripVertical
+														stroke={1.5}
+														style={{
+															width: rem(18),
+															height: rem(18),
+														}}
+													/>
+												</div>
 												<TextInput
 													size="xs"
 													label="Name"
 													value={s.name}
-													disabled={!!isEditDisabled}
+													disabled={!!props.isEditDisabled}
 													onChange={(val) =>
-														form.setFieldValue(
+														props.form.setFieldValue(
 															"fitness.measurements.statistics",
 															updateMeasurementStatistic(
-																form.values.fitness.measurements.statistics,
+																props.form.values.fitness.measurements
+																	.statistics,
 																index,
 																{ name: val.target.value },
 															),
@@ -691,12 +783,13 @@ export default function Page() {
 													size="xs"
 													label="Unit"
 													value={s.unit || undefined}
-													disabled={!!isEditDisabled}
+													disabled={!!props.isEditDisabled}
 													onChange={(val) =>
-														form.setFieldValue(
+														props.form.setFieldValue(
 															"fitness.measurements.statistics",
 															updateMeasurementStatistic(
-																form.values.fitness.measurements.statistics,
+																props.form.values.fitness.measurements
+																	.statistics,
 																index,
 																{ unit: val.target.value },
 															),
@@ -710,15 +803,16 @@ export default function Page() {
 													type="button"
 													variant="outline"
 													disabled={
-														!!isEditDisabled ||
-														form.values.fitness.measurements.statistics
+														!!props.isEditDisabled ||
+														props.form.values.fitness.measurements.statistics
 															.length === 1
 													}
 													onClick={() =>
-														form.setFieldValue(
+														props.form.setFieldValue(
 															"fitness.measurements.statistics",
 															removeMeasurementStatistic(
-																form.values.fitness.measurements.statistics,
+																props.form.values.fitness.measurements
+																	.statistics,
 																index,
 															),
 														)
@@ -727,33 +821,18 @@ export default function Page() {
 													<IconMinus />
 												</ActionIcon>
 											</Group>
-										),
+										</Paper>
 									)}
-									<Button
-										ml="auto"
-										size="xs"
-										type="button"
-										variant="outline"
-										onClick={() =>
-											form.setFieldValue(
-												"fitness.measurements.statistics",
-												addMeasurementStatistic(
-													form.values.fitness.measurements.statistics,
-												),
-											)
-										}
-									>
-										Add
-									</Button>
-								</Stack>
-							</Stack>
-						</Tabs.Panel>
-					</Tabs>
-				</Stack>
-			</form>
-		</Container>
-	);
-}
+								</Draggable>
+							),
+						)}
+						{provided.placeholder}
+					</Stack>
+				)}
+			</Droppable>
+		</DragDropContext>
+	</Stack>
+);
 
 const EditDashboardElement = (props: {
 	index: number;
@@ -761,27 +840,22 @@ const EditDashboardElement = (props: {
 	lot: DashboardElementLot;
 	form: ReturnType<typeof useForm<UserPreferences>>;
 }) => {
-	const focusedElementIndex = props.form.values.general.dashboard.findIndex(
-		(de) => de.section === props.lot,
-	);
-	const focusedElement =
-		props.form.values.general.dashboard[focusedElementIndex];
+	const [isOpen, setIsOpen] = useState(false);
+	const focusedElement = props.form.values.general.dashboard[props.index];
 
 	const updateDashboardElement = <K extends keyof typeof focusedElement>(
 		key: K,
 		value: (typeof focusedElement)[K],
-	) => {
-		const newDashboardData = cloneDeep(props.form.values.general.dashboard);
-		newDashboardData[focusedElementIndex][key] = value;
-		props.form.setFieldValue("general.dashboard", newDashboardData);
-	};
+	) =>
+		// @ts-expect-error Too lazy to debug why this is failing.
+		props.form.setFieldValue(`general.dashboard.${props.index}.${key}`, value);
 
 	return (
 		<Draggable index={props.index} draggableId={props.lot}>
 			{(provided, snapshot) => (
 				<Paper
-					withBorder
 					p="xs"
+					withBorder
 					ref={provided.innerRef}
 					{...provided.draggableProps}
 					className={cn({ [classes.itemDragging]: snapshot.isDragging })}
@@ -791,60 +865,86 @@ const EditDashboardElement = (props: {
 							<div
 								{...provided.dragHandleProps}
 								style={{
-									display: "flex",
-									justifyContent: "center",
 									height: "100%",
 									cursor: "grab",
+									display: "flex",
+									justifyContent: "center",
 								}}
 							>
 								<IconGripVertical
-									style={{ width: rem(18), height: rem(18) }}
 									stroke={1.5}
+									style={{ width: rem(18), height: rem(18) }}
 								/>
 							</div>
 							<Text fw="bold" fz={{ md: "lg", lg: "xl" }}>
 								{changeCase(props.lot)}
 							</Text>
 						</Group>
-						<Switch
-							label="Hidden"
-							labelPosition="left"
-							checked={focusedElement.hidden}
-							disabled={!!props.isEditDisabled}
-							onChange={(ev) =>
-								updateDashboardElement("hidden", ev.currentTarget.checked)
-							}
-						/>
+						<ActionIcon
+							color="gray"
+							variant="subtle"
+							onClick={() => setIsOpen(!isOpen)}
+						>
+							<IconSettings size={20} />
+						</ActionIcon>
 					</Group>
-					<Group gap="xl" wrap="nowrap">
-						{EDITABLE_NUM_ELEMENTS.includes(props.lot) ? (
-							<NumberInput
-								size="xs"
-								label="Number of elements"
-								disabled={!!props.isEditDisabled}
-								value={focusedElement.numElements || undefined}
-								onChange={(num) => {
-									if (isNumber(num)) updateDashboardElement("numElements", num);
-								}}
-							/>
-						) : null}
-						{EDITABLE_DEDUPLICATE_MEDIA.includes(props.lot) ? (
+					<Collapse in={isOpen}>
+						<Stack gap="xs" mt="md">
 							<Switch
 								size="xs"
-								label="Deduplicate media"
+								label="Hidden"
+								checked={focusedElement.hidden}
 								disabled={!!props.isEditDisabled}
-								styles={{ description: { width: rem(200) } }}
-								checked={focusedElement.deduplicateMedia ?? undefined}
-								description="If there's more than one episode of a media, keep the first one"
 								onChange={(ev) =>
-									updateDashboardElement(
-										"deduplicateMedia",
-										ev.currentTarget.checked,
-									)
+									updateDashboardElement("hidden", ev.currentTarget.checked)
 								}
 							/>
-						) : null}
-					</Group>
+							{EDITABLE_DEDUPLICATE_MEDIA.includes(props.lot) ? (
+								<Switch
+									size="xs"
+									label="Deduplicate media"
+									disabled={!!props.isEditDisabled}
+									checked={focusedElement.deduplicateMedia ?? undefined}
+									description="If there's more than one episode of a media, keep the first one"
+									onChange={(ev) =>
+										updateDashboardElement(
+											"deduplicateMedia",
+											ev.currentTarget.checked,
+										)
+									}
+								/>
+							) : null}
+							{EDITABLE_NUM_ELEMENTS.includes(props.lot) ? (
+								<NumberInput
+									size="xs"
+									label="Number of elements"
+									disabled={!!props.isEditDisabled}
+									value={focusedElement.numElements || undefined}
+									onChange={(num) => {
+										if (isNumber(num)) {
+											updateDashboardElement("numElements", num);
+											updateDashboardElement("numDaysAhead", undefined);
+										}
+									}}
+								/>
+							) : null}
+							{EDITABLE_NUM_DAYS_AHEAD.includes(props.lot) ? (
+								<NumberInput
+									size="xs"
+									label="Number of days ahead"
+									disabled={!!props.isEditDisabled}
+									value={focusedElement.numDaysAhead || undefined}
+									description="Show upcoming items within this many days from today"
+									onChange={(num) => {
+										if (isNumber(num)) {
+											updateDashboardElement("numDaysAhead", num);
+											updateDashboardElement("numElements", undefined);
+										}
+									}}
+								/>
+							) : null}
+						</Stack>
+					</Collapse>
 				</Paper>
 			)}
 		</Draggable>

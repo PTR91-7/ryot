@@ -60,9 +60,7 @@ export const clientSideFileUpload = async (file: File, prefix: string) => {
 	return presignedPutS3Url.key;
 };
 
-export const convertEnumToSelectData = (value: {
-	[id: number]: string;
-}) =>
+export const convertEnumToSelectData = (value: { [id: number]: string }) =>
 	Object.values(value).map((v) => ({
 		value: v,
 		label: startCase(v.toString().toLowerCase()),
@@ -95,5 +93,7 @@ export const getProviderSourceImage = (source: MediaSource) =>
 		.with(MediaSource.Hardcover, () => "hardcover.png")
 		.with(MediaSource.GiantBomb, () => "giant-bomb.jpeg")
 		.with(MediaSource.Spotify, () => "spotify.svg")
+		.with(MediaSource.MusicBrainz, () => "musicbrainz.svg")
+		.with(MediaSource.Metron, () => "metron.svg")
 		.with(MediaSource.Custom, () => undefined)
 		.exhaustive();

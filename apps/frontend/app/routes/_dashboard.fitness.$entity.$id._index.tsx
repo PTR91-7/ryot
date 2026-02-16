@@ -49,7 +49,7 @@ import {
 	IconZzz,
 } from "@tabler/icons-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { Form, Link, data, useLoaderData } from "react-router";
+import { data, Form, Link, useLoaderData } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -199,8 +199,8 @@ export default function Page() {
 		`MetadataConsumedOpened-${entityId}`,
 		false,
 	);
-	const [isWorkoutLoading, setIsWorkoutLoading] = useState(false);
 	const startWorkout = useGetWorkoutStarter();
+	const [isWorkoutLoading, setIsWorkoutLoading] = useState(false);
 	const [_a, setAddEntityToCollectionsData] = useAddEntityToCollections();
 
 	const { data: workoutData } = useUserWorkoutDetails(
@@ -697,8 +697,11 @@ const ConsumedMetadataDisplay = (props: {
 	enabled: boolean;
 	metadataId: string;
 }) => {
-	const [{ data: metadataDetails }, _, metadataTranslations] =
-		useMetadataDetails(props.metadataId, props.enabled);
+	const [{ data: metadataDetails }] = useMetadataDetails(
+		props.metadataId,
+		props.enabled,
+	);
+
 	const s3PresignedUrls = useS3PresignedUrls(metadataDetails?.assets.s3Images);
 	const images = [
 		...(metadataDetails?.assets.remoteImages || []),
@@ -707,7 +710,7 @@ const ConsumedMetadataDisplay = (props: {
 
 	return (
 		<Link to={$path("/media/item/:id", { id: props.metadataId })}>
-			<Tooltip label={metadataTranslations?.title || metadataDetails?.title}>
+			<Tooltip label={metadataDetails?.title}>
 				<Avatar src={images.at(0)} />
 			</Tooltip>
 		</Link>

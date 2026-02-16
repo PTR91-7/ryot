@@ -42,13 +42,20 @@ pub const USER_AGENT_STR: &str = const_str::concat!(
     ")"
 );
 
-pub fn compute_next_page(page: u64, total_items: u64) -> Option<u64> {
-    page.checked_mul(PAGE_SIZE)
+pub fn compute_next_page_with_size(page: u64, total_items: u64, page_size: u64) -> Option<u64> {
+    if page_size == 0 {
+        return None;
+    }
+    page.checked_mul(page_size)
         .and_then(|count| (count < total_items).then(|| page.checked_add(1)))
         .flatten()
 }
 
-pub const PEOPLE_SEARCH_SOURCES: [MediaSource; 12] = [
+pub fn compute_next_page(page: u64, total_items: u64) -> Option<u64> {
+    compute_next_page_with_size(page, total_items, PAGE_SIZE)
+}
+
+pub const PEOPLE_SEARCH_SOURCES: [MediaSource; 13] = [
     MediaSource::Vndb,
     MediaSource::Igdb,
     MediaSource::Tmdb,
@@ -58,17 +65,19 @@ pub const PEOPLE_SEARCH_SOURCES: [MediaSource; 12] = [
     MediaSource::Audible,
     MediaSource::Hardcover,
     MediaSource::GiantBomb,
+    MediaSource::MusicBrainz,
     MediaSource::Openlibrary,
     MediaSource::MangaUpdates,
     MediaSource::YoutubeMusic,
 ];
 
-pub const MEDIA_SOURCES_WITHOUT_RECOMMENDATIONS: [MediaSource; 6] = [
+pub const MEDIA_SOURCES_WITHOUT_RECOMMENDATIONS: [MediaSource; 7] = [
     MediaSource::Tvdb,
     MediaSource::Vndb,
     MediaSource::Itunes,
     MediaSource::Custom,
     MediaSource::Spotify,
+    MediaSource::MusicBrainz,
     MediaSource::GoogleBooks,
 ];
 
@@ -189,7 +198,10 @@ where
         .map(|(idx, _)| idx)
 }
 
-pub fn get_base_http_client(headers: Option<Vec<(HeaderName, HeaderValue)>>) -> reqwest::Client {
+fn build_http_client(
+    headers: Option<Vec<(HeaderName, HeaderValue)>>,
+    danger_accept_invalid_certs: bool,
+) -> reqwest::Client {
     let mut req_headers = HeaderMap::new();
     req_headers.insert(USER_AGENT, HeaderValue::from_static(USER_AGENT_STR));
     for (header, value) in headers.unwrap_or_default().into_iter() {
@@ -198,6 +210,18 @@ pub fn get_base_http_client(headers: Option<Vec<(HeaderName, HeaderValue)>>) -> 
     ClientBuilder::new()
         .default_headers(req_headers)
         .timeout(Duration::from_secs(15))
+        .danger_accept_invalid_certs(danger_accept_invalid_certs)
         .build()
         .unwrap()
+}
+
+pub fn get_base_http_client(headers: Option<Vec<(HeaderName, HeaderValue)>>) -> reqwest::Client {
+    build_http_client(headers, false)
+}
+
+pub fn get_http_client_with_tls_config(
+    headers: Option<Vec<(HeaderName, HeaderValue)>>,
+    danger_accept_invalid_certs: bool,
+) -> reqwest::Client {
+    build_http_client(headers, danger_accept_invalid_certs)
 }

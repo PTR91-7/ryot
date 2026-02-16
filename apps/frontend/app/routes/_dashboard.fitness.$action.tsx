@@ -17,8 +17,8 @@ import {
 	usePlayFitnessSound,
 } from "~/components/routes/fitness.action/hooks";
 import {
-	WorkoutModals,
 	useWorkoutModals,
+	WorkoutModals,
 } from "~/components/routes/fitness.action/modals";
 import { handleSetConfirmation } from "~/components/routes/fitness.action/set-display/functions";
 import type { FuncStartTimer } from "~/components/routes/fitness.action/types";
@@ -35,7 +35,7 @@ import {
 	useMeasurementsDrawer,
 } from "~/lib/state/fitness";
 import {
-	OnboardingTourStepTargets,
+	OnboardingTourStepTarget,
 	useOnboardingTour,
 } from "~/lib/state/onboarding-tour";
 import { FitnessAction } from "~/lib/types";
@@ -61,15 +61,15 @@ export default function Page() {
 	const [parent] = useAutoAnimate();
 	const userPreferences = useUserPreferences();
 	const loaderData = useLoaderData<typeof loader>();
-	const { advanceOnboardingTourStep } = useOnboardingTour();
 	const playCheckSound = usePlayFitnessSound("check");
+	const { advanceOnboardingTourStep } = useOnboardingTour();
+	const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 	const [_, setMeasurementsDrawerData] = useMeasurementsDrawer();
 	const [currentWorkout, setCurrentWorkout] = useCurrentWorkout();
-	const [currentTimer, setCurrentTimer] = useCurrentWorkoutTimerAtom();
-	const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-	const performTasksAfterSetConfirmed = usePerformTasksAfterSetConfirmed();
-	const timerCompleteSound = usePlayFitnessSound("timer-completed");
 	const [isSaveBtnLoading, setIsSaveBtnLoading] = useState(false);
+	const timerCompleteSound = usePlayFitnessSound("timer-completed");
+	const [currentTimer, setCurrentTimer] = useCurrentWorkoutTimerAtom();
+	const performTasksAfterSetConfirmed = usePerformTasksAfterSetConfirmed();
 	const promptForRestTimer = userPreferences.fitness.logging.promptForRestTimer;
 	const {
 		openTimerDrawer,
@@ -343,11 +343,18 @@ export default function Page() {
 									<Button
 										component={Link}
 										variant="subtle"
-										onClick={() => advanceOnboardingTourStep()}
 										to={$path("/fitness/exercises/list")}
 										className={
-											OnboardingTourStepTargets.ClickOnAddAnExerciseButton
+											OnboardingTourStepTarget.ClickOnAddAnExerciseButton
 										}
+										onClick={() => {
+											setCurrentWorkout(
+												produce(currentWorkout, (draft) => {
+													draft.replacingExerciseIdx = undefined;
+												}),
+											);
+											advanceOnboardingTourStep();
+										}}
 									>
 										Add an exercise
 									</Button>

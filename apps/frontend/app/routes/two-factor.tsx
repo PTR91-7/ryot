@@ -16,7 +16,7 @@ import {
 	VerifyTwoFactorErrorVariant,
 } from "@ryot/generated/graphql/backend/graphql";
 import { useState } from "react";
-import { Form, Link, data, redirect } from "react-router";
+import { data, Form, Link, redirect } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { z } from "zod";
@@ -129,8 +129,8 @@ const verifyTwoFactorSchema = z.object({
 
 export default function Page() {
 	const [form, fields] = useForm({});
-	const [useBackupCode, setUseBackupCode] = useState(false);
 	const [code, setCode] = useState("");
+	const [useBackupCode, setUseBackupCode] = useState(false);
 
 	return (
 		<Container size="xs" style={{ display: "flex", alignItems: "center" }}>

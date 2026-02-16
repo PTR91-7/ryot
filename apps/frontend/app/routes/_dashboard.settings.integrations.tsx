@@ -20,8 +20,8 @@ import {
 	Table,
 	type TableData,
 	Text,
-	TextInput,
 	Textarea,
+	TextInput,
 	Title,
 	Tooltip,
 } from "@mantine/core";
@@ -32,7 +32,6 @@ import {
 	DeleteUserIntegrationDocument,
 	GenerateAuthTokenDocument,
 	IntegrationProvider,
-	MediaSource,
 	UserIntegrationsDocument,
 	type UserIntegrationsQuery,
 } from "@ryot/generated/graphql/backend/graphql";
@@ -50,14 +49,14 @@ import {
 	IconTrash,
 } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
-import { Form, data, useActionData, useLoaderData } from "react-router";
+import { data, Form, useActionData, useLoaderData } from "react-router";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
 import { z } from "zod";
 import { CopyableTextInput } from "~/components/common";
 import {
-	PRO_REQUIRED_MESSAGE,
 	applicationBaseUrl,
+	PRO_REQUIRED_MESSAGE,
 } from "~/lib/shared/constants";
 import { dayjsLib } from "~/lib/shared/date-utils";
 import {
@@ -388,7 +387,7 @@ const tagIdsTransform = (val: string | undefined) =>
 	val
 		? val
 				.split(",")
-				.map((id) => Number.parseInt(id.trim()))
+				.map((id) => Number.parseInt(id.trim(), 10))
 				.filter((id) => !Number.isNaN(id))
 		: undefined;
 
@@ -424,25 +423,9 @@ const PROVIDER_CONFIGS: Record<IntegrationProvider, ProviderConfig> = {
 		fields: [
 			{ name: "komgaBaseUrl", label: "Base Url", type: "text" },
 			{
-				type: "text",
-				label: "Username",
-				name: "komgaUsername",
-			},
-			{
 				type: "password",
-				label: "Password",
-				name: "komgaPassword",
-			},
-			{
-				type: "select",
-				label: "Provider",
-				name: "komgaProvider",
-				options: [MediaSource.Anilist, MediaSource.Myanimelist].map(
-					(source) => ({
-						value: source,
-						label: changeCase(source),
-					}),
-				),
+				label: "API Key",
+				name: "komgaApiKey",
 			},
 		],
 	},
@@ -866,6 +849,28 @@ const CreateOrUpdateModal = (props: {
 							integrationData={props.integrationData}
 						/>
 					)}
+					{provider && supportsSyncToOwnedCollection(provider) ? (
+						<Tooltip
+							label="Only available for Pro users"
+							disabled={coreDetails.isServerKeyValidated}
+						>
+							<Checkbox
+								name="syncToOwnedCollection"
+								label="Sync to Owned collection"
+								disabled={!coreDetails.isServerKeyValidated}
+								styles={{ body: { display: "flex", alignItems: "center" } }}
+								description={`Checking this will also sync items in your library to the "Owned" collection`}
+								defaultChecked={
+									props.integrationData?.syncToOwnedCollection || undefined
+								}
+							/>
+						</Tooltip>
+					) : undefined}
+					<Checkbox
+						name="isDisabled"
+						label="Pause integration"
+						defaultChecked={props.integrationData?.isDisabled || undefined}
+					/>
 					{provider && (
 						<Group justify="end">
 							<Button
@@ -877,11 +882,6 @@ const CreateOrUpdateModal = (props: {
 							</Button>
 						</Group>
 					)}
-					<Checkbox
-						name="isDisabled"
-						label="Pause integration"
-						defaultChecked={props.integrationData?.isDisabled || undefined}
-					/>
 					<Collapse in={isAdvancedSettingsOpened}>
 						<Stack>
 							<TextInput
@@ -905,9 +905,9 @@ const CreateOrUpdateModal = (props: {
 									/>
 									<NumberInput
 										min={0}
+										required
 										size="xs"
 										max={100}
-										required
 										name="maximumProgress"
 										label="Maximum progress"
 										description="After this value, progress will be marked as completed"
@@ -920,7 +920,7 @@ const CreateOrUpdateModal = (props: {
 							{provider && supportsSyncToOwnedCollection(provider) ? (
 								<Tooltip
 									label="Only available for Pro users"
-									disabled={!coreDetails.isServerKeyValidated}
+									disabled={coreDetails.isServerKeyValidated}
 								>
 									<Checkbox
 										name="syncToOwnedCollection"

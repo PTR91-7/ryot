@@ -30,7 +30,7 @@ import { getActionIntent, processSubmission } from "@ryot/ts-utils";
 import { useMutation } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
-import { Form, data, useNavigate } from "react-router";
+import { data, Form, useNavigate } from "react-router";
 import { $path } from "safe-routes";
 import { match } from "ts-pattern";
 import { withQuery } from "ufo";
@@ -200,9 +200,9 @@ const PasswordSection = () => {
 };
 
 const TwoFactorAuthSection = () => {
+	const navigate = useNavigate();
 	const userDetails = useUserDetails();
 	const coreDetails = useCoreDetails();
-	const navigate = useNavigate();
 	const dashboardData = useDashboardLayoutData();
 	const isEditDisabled = dashboardData.isDemoInstance;
 	const [setupModalOpened, { open: openSetupModal, close: closeSetupModal }] =
@@ -353,11 +353,11 @@ interface TwoFactorSetupModalProps {
 
 const TwoFactorSetupModal = (props: TwoFactorSetupModalProps) => {
 	const [step, setStep] = useState(TwoFactorSetupStep.Auth);
+	const [backupCodes, setBackupCodes] = useState<string[]>([]);
 	const [setupData, setSetupData] = useState<{
 		secret: string;
 		qrCodeUrl: string;
 	} | null>(null);
-	const [backupCodes, setBackupCodes] = useState<string[]>([]);
 
 	const initiateMutation = useMutation({
 		mutationFn: async () => {
