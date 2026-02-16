@@ -1,7 +1,0 @@
-update source branch on github
-git pull origin source
-git status
-git add .
-git status
-git commit -m "Resolve merge conflict"
-git push origin main
