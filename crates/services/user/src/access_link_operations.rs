@@ -21,7 +21,6 @@ pub async fn create_access_link(
     input: CreateAccessLinkInput,
     user_id: String,
 ) -> Result<StringIdObject> {
-    server_key_validation_guard(is_server_key_validated(ss).await?).await?;
     let new_link = access_link::ActiveModel {
         user_id: ActiveValue::Set(user_id),
         name: ActiveValue::Set(input.name),
